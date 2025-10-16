@@ -21,11 +21,13 @@ import numpy as np
 from typing import Iterator, Tuple, ClassVar
 
 import importlib.resources
+import importlib.resources._legacy
+
 
 system = system()
 fileRoot = dirname(dirname(abspath(__file__)))
 if system == "Windows":
-    with importlib.resources.path("OCRSub.libs.Windows", "libass-9.dll") as lib_path:
+    with importlib.resources.as_file(importlib.resources.files("PaddleOCRAnimation.libs.Windows")/"libass-9.dll") as lib_path:
         _libass = ctypes.cdll.LoadLibrary(lib_path)
     _libc = ctypes.cdll.msvcrt
 elif system == "Linux":
@@ -33,11 +35,11 @@ elif system == "Linux":
                 "libfontconfig.so.1", "libfreetype.so.6", "libc.so.6", "libz.so.1", "libbz2.so.1.0",
                 "libpng16.so.16", "libbrotlidec.so.1", "libbrotlicommon.so.1"]:
         try:
-            with importlib.resources.path("OCRSub.libs.linux", lib) as lib_path:
+            with importlib.resources.as_file(importlib.resources.files("PaddleOCRAnimation.libs.linux") / lib) as lib_path:
                 ctypes.cdll.LoadLibrary(lib_path)
         except OSError as e:
             raise RuntimeError(f"Échec du chargement de {lib} : {e}")
-    with importlib.resources.path("OCRSub.libs.linux", "libass.so.9.4.1") as lib_path:
+    with importlib.resources.as_file(importlib.resources.files("PaddleOCRAnimation.libs.linux")/ "libass.so.9.4.1") as lib_path:
                 _libass = ctypes.cdll.LoadLibrary(lib_path)
 
     _libc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("c"))

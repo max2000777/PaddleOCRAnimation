@@ -2,9 +2,10 @@ import ass
 from datetime import timedelta
 from typing import Union
 from _io import TextIOWrapper
-from OCRSub.B2_Segmentation import RendererClean
-from OCRSub.B2_Segmentation.RendererClean import Event
+from . import RendererClean
+from .RendererClean import Event
 from os.path import exists, abspath
+from pathlib import Path
 
 class DocumentPlus(ass.Document):
     """
@@ -193,7 +194,7 @@ class DocumentPlus(ass.Document):
         return resultats_libass
 
     @classmethod
-    def parse_file_plus(cls, f: TextIOWrapper, sort: bool = True) -> 'DocumentPlus':
+    def parse_file_plus(cls, f: TextIOWrapper | Path | str, sort: bool = True) -> 'DocumentPlus':
         """
         Parse un fichier ASS et retourne un objet DocumentPlus,
         avec possibilité de trier automatiquement les événements.
@@ -207,7 +208,13 @@ class DocumentPlus(ass.Document):
             DocumentPlus: Un objet DocumentPlus contenant les données du fichier ASS,
                 éventuellement triées.
         """
-        doc = cls.parse_file(f)
+        if isinstance(f, TextIOWrapper):
+            doc = cls.parse_file(f)
+        elif isinstance(f, Path) or (isinstance(f, str) and Path(f).exists):
+            with open(f,  encoding='utf_8_sig') as file:
+                doc = cls.parse_file(file)
+        else:
+            raise ValueError(f'f should be a TextIOWrapper or a valid path')
         if sort:
             doc = doc.sort_events()
         return doc
