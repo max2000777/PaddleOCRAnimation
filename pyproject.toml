@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PaddleOCRAnimation"
+version = "0.1.0"
+description = "Création de dataset et entrainement d'IA liés à fichiers sous titres"
+authors = [
+  { name="Maxime BRENNAN", email="maxime.brennan@outlook.com" }
+]
+requires-python = ">=3.7"
+dependencies = ["opencv-python",
+                "ass",
+                "Pillow",
+                "matplotlib",
+                "numpy"
+                ]
+
+[tool.setuptools]
+packages = ["PaddleOCRAnimation"]
+
+[tool.setuptools.package-data]
+"PaddleOCRAnimation" = ["libs/windows/*.dll", "libs/linux/*", "libs/fonts/*.ttf"]
