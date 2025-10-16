@@ -1,0 +1,28 @@
+# virtualenvs
+.venv/
+PaddleOCRAnime/.venv/
+
+# python
+__pycache__/
+*.py[cod]
+*.pyc
+*$py.class
+
+# vscode
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# autres
+examples/data/results/
+examples/data/crop/
+examples/data/rec_dataset/
+examples/data/rec_train.txt
+examples/data/rec_val.txt
+examples/data/test.txt
+examples/data/train.txt
+OCRSub.egg-info/
+libass-0.17.4/
+
+#WSL
+*Zone.Identifier
