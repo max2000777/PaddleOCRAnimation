@@ -7,8 +7,8 @@ from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from datetime import timedelta
 from os import makedirs, chdir, getcwd
 from warnings import warn
-from OCRSub.B2_Segmentation import RendererClean
-from OCRSub.B2_Segmentation.DocumentPlus import DocumentPlus
+from .sub import RendererClean
+from .sub.DocumentPlus import DocumentPlus
 from ass import line, data, Dialogue
 from copy import deepcopy
 import random
@@ -24,7 +24,7 @@ from ctypes import cdll
 # from s3fs.core import S3File
 import re
 import importlib.resources
-
+from pathlib import Path
 
 try:
     system = system()
@@ -544,6 +544,7 @@ class Video:
             #   - anime_episode01.srt (intermédiaire nettoyé)
             #   - anime_episode01.ass (version convertie en ASS)
         """
+        # TODO : mettre a jours documentation
         cheminVersMKV, sortie = abspath(self.path), abspath(sortie)
         if which("ffmpeg") is None:
             raise SystemError("ffmpeg n'est pas installé ou n'est pas présent dans le PATH")
@@ -899,7 +900,7 @@ class Video:
         # TODO : renvoyer une liste de texte/images
 
     @classmethod
-    def make_video(cls, path_to_mkv: str) -> 'Video':
+    def make_video(cls, path_to_mkv: str| Path) -> 'Video':
         """_summary_
 
         Args:
@@ -908,6 +909,8 @@ class Video:
         Returns:
             Video: _description_
         """
+        if isinstance(path_to_mkv, Path):
+            path_to_mkv = str(path_to_mkv)
         if isinstance(path_to_mkv, str):
             if not exists(path_to_mkv):
                 raise FileNotFoundError(f"Le fichier {path_to_mkv} n'existe pas")
@@ -919,7 +922,7 @@ class Video:
         ffprobe_results = cls.recup_infos_MKV(path_to_mkv)
 
         return cls(
-            path=path_to_mkv,
+            path=str(path_to_mkv),
             taille=ffprobe_results['taille'],
             duree=ffprobe_results['durée'],
             sous_titres=ffprobe_results['sous_titres']

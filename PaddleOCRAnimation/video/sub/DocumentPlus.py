@@ -142,6 +142,7 @@ class DocumentPlus(ass.Document):
         return docCopie
 
     def doc_event_donne(self, event: Event) -> 'DocumentPlus':
+        # TODO : trouver a quoi sert cette fonction
         docCopie = DocumentPlus()
         docCopie.info.set_data(self.info)
 
@@ -167,6 +168,7 @@ class DocumentPlus(ass.Document):
         self, frame: int | timedelta, size: tuple[int, int],
         event_id: int = 0, fonts_dir: str | None = None
     )->RendererClean.ImageSequence:
+        # TODO : changer nom et faire documentation
         if not isinstance(size, tuple) or len(size) != 2:
             raise ValueError(
                 "size doit être un tuple de taille 2 (ex: (1900, 1080))"
@@ -184,7 +186,8 @@ class DocumentPlus(ass.Document):
         doc_precis = self.doc_event_precis(frame, event_id)
         
         ctx = RendererClean.Context()
-        ctx.fonts_dir = b"fontMonogatari"
+        if fonts_dir is not None:
+            ctx.fonts_dir = fonts_dir
         r = ctx.make_renderer()
         r.set_fonts(fontconfig_config="\0")
         r.set_all_sizes(size)
@@ -219,10 +222,3 @@ class DocumentPlus(ass.Document):
             doc = doc.sort_events()
         return doc
 
-
-if __name__ == "__main__":
-    import ass
-
-    with open("B2_Segmentation/TestsLibass/testST.ass", encoding='utf_8_sig') as f:
-        doc = DocumentPlus.parse_file_plus(f)
-    doc.doc_event_precis(frame=timedelta(minutes=24, seconds=38), event_id=4)
