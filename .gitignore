@@ -24,6 +24,7 @@ examples/data/test.txt
 examples/data/train.txt
 OCRSub.egg-info/
 libass-0.17.4/
+tests/tmp/
 
 #WSL
 *Zone.Identifier
