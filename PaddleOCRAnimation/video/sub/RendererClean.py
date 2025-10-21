@@ -61,6 +61,10 @@ class Box:
     Permet de manipuler et de dessiner la boîte sur une image PIL.
     """
     def __init__(self, haut_gauche, haut_droit, bas_droit, bas_gauche, event_type=None):
+        for coin in [haut_gauche, haut_droit, bas_droit, bas_gauche]:
+            for element in coin:
+                if not isinstance(element, int) or element < 0:
+                    raise ValueError(f"Boxes coin should be a positive int (here {element})")
         self.haut_gauche: list[int] = haut_gauche
         self.haut_droit: list[int] = haut_droit
         self.bas_droit: list[int] = bas_droit
@@ -72,6 +76,9 @@ class Box:
             self.bas_gauche
             ]
         self.event_type: int | None = event_type
+    
+    def __repr__(self):
+        return f'{self.full_box}'
 
     def get_bounding_box(self):
         """Retourne le plus petit rectangle aligné avec les axes qui contient entièrement la boîte
@@ -81,6 +88,41 @@ class Box:
         x_min, x_max = min(xs), max(xs)
         y_min, y_max = min(ys), max(ys)
         return x_min, y_min, x_max, y_max  # gauche, haut, droite, bas
+    
+    def add_padding(self, padding: tuple[int, int, int, int]):
+        """Shift the box coordinates according to the padding applied to the image.
+
+        The padding is defined as (left, top, right, bottom). 
+        When padding is added to the left or top of the image, 
+        the box is moved rightward and downward accordingly.
+
+        Args:
+            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom).
+
+        Raises:
+            ValueError: If padding is not a tuple of four integers.
+        """
+        if (
+            not isinstance(padding, tuple) 
+            or not all([isinstance(a, int) for a in padding]) 
+            or not len(padding)==4
+        ):
+            raise ValueError(f'padding should be a tuple with 4 int, here {padding}')
+        
+        padding_left, padding_top, _, _ = padding
+
+        self.haut_gauche = [self.haut_gauche[0]+padding_left, self.haut_gauche[1]+padding_top]
+        self.haut_droit = [self.haut_droit[0]+padding_left, self.haut_droit[1]+padding_top]
+        self.bas_droit = [self.bas_droit[0]+padding_left, self.bas_droit[1]+padding_top]
+        self.bas_gauche = [self.bas_gauche[0]+padding_left, self.bas_gauche[1]+padding_top]
+
+        self.full_box = [
+            self.haut_gauche,
+            self.haut_droit,
+            self.bas_droit,
+            self.bas_gauche
+        ]
+
 
     def to_pil(self, size,
                border_color: int | tuple[int] = (255, 0, 0, 255),
@@ -196,7 +238,9 @@ class Image(ctypes.Structure):
         # Numpy fait la convertion (hauteur, largeur) et non (largeur, hauteur)
         return self.bitmapNumpy[y, x]
 
-    def to_pil(self, SIZE: tuple[int, int] | None = None) -> PILIMAGE:
+    def to_pil(
+            self, SIZE: tuple[int, int] | None = None
+        ) -> PILIMAGE.Image:
         """
         Convertit l'image Libass courante en une image PIL RGBA.
 
@@ -207,10 +251,17 @@ class Image(ctypes.Structure):
             PIL.Image: Image PIL RGBA contenant le rendu de l'image à la position
                 et couleur spécifiées.
         """
+        # TODO : gérer les multilignes 
+        if SIZE == (0, 0):
+            SIZE = None
         width, height = self.w, self.h
         r, g, b, a = self.rgba
         dist_x, dist_y = (self.dst_x, self.dst_y) if SIZE is not None else (0, 0)
-        im = PILIMAGE.new("RGBA", (SIZE[0], SIZE[1])) if SIZE is not None else PILIMAGE.new("RGBA", (width, height))
+
+        if SIZE is not None and SIZE !=(0, 0):
+            im = PILIMAGE.new("RGBA", (SIZE[0], SIZE[1]))
+        else: # we just want the image with the padding
+            im = PILIMAGE.new("RGBA", (width, height))
         pixels = im.load()
 
         for y in range(height):
@@ -225,25 +276,49 @@ class Image(ctypes.Structure):
 
         return im
 
-    def to_box(self, padding: tuple[int, int, int, int] = (0, 0, 0, 0)) -> Box:
+    def to_box(
+            self, 
+            padding: tuple[int, int, int, int] = (0, 0, 0, 0),
+            xy_offset: tuple[int, int] = (0,0)
+        ) -> Box:
         """
         Calcule la boîte englobante (bounding box) de l'image courante.
+        Cette fonction détermine les coordonnées exactes de la boîte couvrant
+        entièrement l'image (ou le calque) associée à l'événement courant.
+        Elle permet également d'appliquer un décalage (`xy_offset`) ou un
+        agrandissement (`padding`) pour ajuster la position et la taille de la box.
+
         Args:
-            padding (tuple[int, int, int, int]): permet d'agrendir la boite
-                (droite, haute, gauche, bas), par défaut aucun padding.
+            padding (tuple[int, int, int, int]): 
+                Marges supplémentaires à appliquer sur chaque bord de la boîte 
+                sous la forme (gauche, haut, droite, bas).  
+                Par défaut, aucun padding n'est appliqué `(0, 0, 0, 0)`.
+            
+            xy_offset (tuple[int, int]): 
+                Décalage (x, y) à soustraire aux coordonnées de la boîte.  
+                Cela permet de repositionner la box sur une image plus petite
+                (par exemple lors du recadrage d’un rendu local d’événement).  
+                Par défaut `(0, 0)`.
 
         Returns:
-            Box: Objet Box représentant la boîte englobante de l'image,
-                avec le type d'image (texte, outline, etc.).
+            Box: 
+                Objet `Box` représentant la boîte englobante de l'image, avec 
+                les coordonnées ajustées et le type d'image associé 
+                (texte, contour, etc.).
         """
-        x1 = self.dst_x
+        x1 = self.dst_x - xy_offset[0]
         x2 = x1 + self.w
-        y1 = self.dst_y
+        y1 = self.dst_y - xy_offset[1]
         y2 = y1 + self.h
 
-        return Box([x1 - padding[0], y1 - padding[1]], [x2 + padding[2], y1 - padding[1]],
-                   [x2 + padding[2], y2 + padding[3]], [x1 - padding[0], y2 + padding[3]],
-                   event_type=self.type)
+        box = Box(
+            [max(x1 - padding[0], 0), max(y1 - padding[1], 0)],
+            [max(x2 + padding[2], 0), max(y1 - padding[1], 0)],
+            [max(x2 + padding[2], 0), max(y2 + padding[3], 0)],
+            [max(x1 - padding[0], 0), max(y2 + padding[3], 0)],
+            event_type=self.type
+        )
+        return box
 
 
 Image._fields_ = [
@@ -290,27 +365,71 @@ class ImageSequence(object):
         for image in self:
             i += 1
         return i
+    
+    def get_distances_list(self) -> tuple[int, int, int, int]:
+        images_h, images_w, images_dst_x, images_dst_y = [], [], [], []
+        for image in self:
+            images_h.append(image.h)
+            images_w.append(image.w)
+            images_dst_x.append(image.dst_x)
+            images_dst_y.append(image.dst_y)
+        smallest_dist_x = min(images_dst_x)
+        smallest_dist_y = min(images_dst_y)
+        biggest_h, biggest_w = -1, -1
+        for i in range(len(images_h)):
+            biggest_h, biggest_w = max(images_dst_y[i]+images_h[i], biggest_h), max(images_dst_x[i]+images_w[i], biggest_w)
+        return (biggest_h, biggest_w, smallest_dist_x, smallest_dist_y)
 
-    def to_pil(self, size: Tuple[int, int]) -> PILIMAGE:
-        """
-        Construit une image PIL RGBA composite à partir de la séquence d'images Libass.
+    def to_pil(self, size: Tuple[int, int]) -> PILIMAGE.Image:
+        """Convertit un ensemble d'images (par exemple des couches de rendu d'un événement ASS)
+        en une image PIL unique, prête à être affichée ou sauvegardée.
+
+        Cette fonction fusionne les différentes couches (textes, contours, etc.)
+        associées à un événement de sous-titre pour produire une image RGBA finale.
 
         Args:
             size (Tuple[int, int]): Taille de l'image finale (largeur, hauteur).
+                - Si `size` est `None` ou `(0, 0)`, l'image résultante correspond uniquement 
+                à la taille minimale nécessaire pour contenir l'événement (bounding box locale).
+                - Si `size` est spécifiée, elle doit correspondre à la taille complète de la 
+                vidéo d'origine afin d'assurer un positionnement correct des sous-titres.
 
         Returns:
-            PIL.Image: Image RGBA résultante contenant toutes les images de la séquence superposées.
+            PILIMAGE.Image: Une image PIL en mode RGBA représentant le rendu complet 
+            de l'événement de sous-titre.
         """
-        base = PILIMAGE.new("RGBA", size, (255, 255, 255, 0))
+        # TODO : refaire documentation 
+        # base = PILIMAGE.new("RGBA", size, (255, 255, 255, 0))
         # Problème potentiel de tris ? Si les outlines sont après le texte ?
         # Pourtant FFMPEG ne fait pas le tris non plus
         # Normalement c'est bon (voir Libas render_text)
-        for image in self:
-            base = PILIMAGE.alpha_composite(base, image.to_pil(size))
+        biggest_h, biggest_w, smallest_dist_x, smallest_dist_y = self.get_distances_list()
+        
+        if size is not None and size != (0,0):
+            base = PILIMAGE.new("RGBA", size)
+            temp = base.copy()
+            smallest_dist_x, smallest_dist_y = 0,0
+        else: 
+            base = PILIMAGE.new("RGBA", (biggest_w-smallest_dist_x, biggest_h-smallest_dist_y))
+            temp = base.copy()
 
+        for i, image in enumerate(self):
+            # TODO : if multinile
+            pil_image = image.to_pil(size)
+            if size is not None and size != (0,0):
+                temptwo = pil_image   
+            else:
+                temptwo = temp.copy()
+                temptwo.paste(pil_image, (image.dst_x-smallest_dist_x, image.dst_y-smallest_dist_y))          
+            base = PILIMAGE.alpha_composite(
+                base, temptwo
+            )
         return base
 
-    def to_box(self, padding: tuple[int, int, int, int] = (0, 0, 0, 0)) -> Box:
+    def to_box(
+            self, padding: tuple[int, int, int, int] = (0, 0, 0, 0),
+            xy_offset: tuple[int, int] = (0,0)
+        ) -> Box:
         """
         Calcule la boîte englobante (bounding box) de toutes les images de la séquence.
         Args:
@@ -328,7 +447,7 @@ class ImageSequence(object):
 
         type = 2
         for image in self:
-            fullBox = image.to_box().full_box
+            fullBox = image.to_box(padding=(0, 0, 0, 0), xy_offset=xy_offset).full_box
             type = image.type if image.type < type else type
 
             x1 = min(x1, fullBox[0][0], fullBox[3][0])
@@ -338,11 +457,18 @@ class ImageSequence(object):
             y1 = min(y1, fullBox[0][1], fullBox[1][1])
 
             y2 = max(y2, fullBox[2][1], fullBox[3][1])
-        return Box([x1 - padding[0], y1 - padding[1]], [x2 + padding[2], y1 - padding[1]],
-                    [x2 + padding[2], y2 + padding[3]], [x1 - padding[0], y2 + padding[3]],
-                    event_type=type)
+        return Box(
+            [max(x1 - padding[0], 0), max(y1 - padding[1], 0)], 
+            [max(x2 + padding[2], 0), max(y1 - padding[1], 0)],
+            [max(x2 + padding[2], 0), max(y2 + padding[3], 0)], 
+            [max(x1 - padding[0], 0), max(y2 + padding[3], 0)],
+            event_type=type
+        )
 
-    def to_singleline_boxes(self, padding: tuple[int, int, int, int] = (0, 0, 0, 0)) -> list[Box]:
+    def to_singleline_boxes(
+            self, padding: tuple[int, int, int, int] = (0, 0, 0, 0),
+            xy_offset: tuple[int, int] = (0,0)
+        ) -> list[Box]:
         """
         Calcule les boites de toutes les images de la séquences, une boite par ligne.
         Args:
@@ -354,7 +480,7 @@ class ImageSequence(object):
         """
         box_characters = []
         for image in self:
-            box = image.to_box(padding=padding)
+            box = image.to_box(padding=padding, xy_offset=xy_offset)
             if box.event_type == image.TYPE_CHARACTER:
                 box_characters.append(box)
         # Les boxes outlines et shadow sont bien trop larges

@@ -25,6 +25,8 @@ from ctypes import cdll
 import re
 import importlib.resources
 from pathlib import Path
+from pprint import pformat
+
 
 try:
     system = system()
@@ -306,6 +308,136 @@ class FrameToBoxResult:
             return_texte += f"{rel_crop_path}\t{clean_text}\n"
 
         return return_texte
+
+@dataclass
+class eventWithPil:
+    image: Image.Image
+    events: list[FrameToBoxEvent]
+
+    def to_pil(self, show_boxes: bool = True)-> Image.Image:
+        """
+        Converts the current event (subtitle) and its bounding boxes into a composite PIL image.
+
+        Args:
+            show_boxes (bool, optional): If True, overlays the subtitle bounding boxes on the image.
+                                        Defaults to True.
+
+        Returns:
+            Image.Image: The rendered image with optional subtitle box overlays.
+        """
+        size = self.image.size
+        base=self.image
+        if not show_boxes:
+            return base
+        for event in self.events:
+            event_pil = event.Boxes.to_pil(size)
+            base = Image.alpha_composite(base, event_pil)
+        return base
+    
+    def add_padding(self, padding: tuple[int, int, int, int]):
+        """Add transparent padding around the subtitle image and update all box coordinates.
+
+        The padding is defined as (left, top, right, bottom). 
+        A transparent border is added around the current RGBA image, 
+        and each event's bounding box is shifted accordingly.
+
+        Args:
+            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom).
+
+        Raises:
+            ValueError: If padding is not a tuple of four integers.
+        """
+        if (
+            not isinstance(padding, tuple) 
+            or not all([isinstance(a, int) for a in padding]) 
+            or not len(padding)==4
+        ):
+            raise ValueError(f'padding should be a tuple with 4 int, here {padding}')
+        previous_w, previous_h = self.image.size
+        new_image = Image.new(
+            mode="RGBA",
+            size=(
+                previous_w+padding[0]+padding[2],
+                previous_h+padding[1]+padding[3]
+            ),
+            color=(0, 0, 0, 0)
+        )
+        new_image.paste(self.image, (padding[0], padding[1]), self.image)
+        self.image = new_image
+
+        for event in self.events:
+            event.Boxes.add_padding(padding=padding)
+
+
+
+    
+
+
+
+
+class eventWithPilList(list[eventWithPil]):
+    """
+    A specialized list of `eventWithPil` objects with convenient visualization and compositing methods.
+
+    Each element in this list contains:
+        - `image`: a PIL Image representing a frame.
+        - `events`: a list of `FrameToBoxEvent` objects, each with text and bounding box information.
+
+    Representation:
+        The `__repr__` method returns a nested dictionary-like string for readability, showing:
+            - The index of each `eventWithPil` in the list.
+            - The size of its PIL image.
+            - The text and bounding box of each event.
+        Note: This is purely for human-readable output and does NOT reflect the actual internal structure,
+              which remains a list of `eventWithPil` objects.
+
+    Example:
+        {
+          '0': { '0': { 'Box': '[[881, 49], [1046, 49], [1046, 110], [881, 110]]',
+                         'Text': '{\\an2\\pos(966.4,103.1)\\fnIwata Mincho Old Pro-Fate B\\fs50\\blur0.9}Preview'},
+                 'PilImage Size': (1920, 1080)},
+          '1': { '0': { 'Box': '[[984, 274], [1612, 274], [1612, 345], [984, 345]]',
+                         'Text': '{\\an2\\pos(1298.67,336)\\fnIwata Mincho Old Pro-Fate B\\fs60\\c&HFF4DD5&\\blur0.9}Dis-nous au moins ton nom !'},
+                 'PilImage Size': (1920, 1080)},
+          ...
+        }
+    """
+    def __repr__(self) -> str:
+        return_str = {}
+        for i, event in enumerate(self):
+            event_dict = {"PilImage Size": event.image.size}
+            for j, line in enumerate(event.events):
+                event_dict[str(j)]= {"Text":line.Event.text, 'Box':str(line.Boxes.full_box)}
+            return_str[str(i)] = event_dict
+        return pformat(return_str, indent=2, width=100)
+
+    def to_pil(self, show_boxes: bool = True) -> Image.Image:
+        """
+        Composites all images in the list into a single PIL image, optionally overlaying bounding boxes for each event.
+
+        Args:
+            show_boxes (bool, optional): Whether to overlay bounding boxes of events on the resulting image.
+                                         Defaults to True.
+
+        Raises:
+            ValueError: If the images in the list do not all have the same size. The object was propably created without giving a size.
+
+        Returns:
+            Image.Image: A single PIL Image representing the composited frames with optional bounding boxes.
+        """
+        size = self[0].image.size
+        base = Image.new(mode="RGBA", size=size)
+        for event in self:
+            if size != event.image.size:
+                raise ValueError('The sizes of the images do not match, the list was most likely made without the size attribute')
+            size = event.image.size
+
+            base = Image.alpha_composite(base, event.image)
+            if show_boxes:
+                for line in event.events:
+                    base = Image.alpha_composite(base, line.Boxes.to_pil(size))
+
+        return base
 
 class Video:
     path: str
@@ -674,7 +806,7 @@ class Video:
         context: RendererClean.Context, piste: int,
         transform_sub: bool = False, multiline: bool = False,
         padding: tuple[int, int, int, int] = (7, 10, 0, 0)
-        )-> tuple[list[FrameToBoxEvent], list[Image.Image]]:
+        )-> eventWithPilList:
         """
         Extrait les boîtes englobantes des sous-titres présents à un instant donné.
 
@@ -721,7 +853,8 @@ class Video:
                 x_min = min(point[0] for point in box.full_box)
                 return (y_min, x_min)
             return sorted(boxes, key=position_cle)
-
+        if isinstance(timestamp, int):
+            timestamp = timedelta(seconds=timestamp)
         doc = self.docs[piste]
         nb_event_in_frame, events_in_frame = doc.nb_event_dans_frame(timestamp, returnEvents=True)
 
@@ -736,25 +869,29 @@ class Video:
                     doc.styles[i] = style_transform(doc.styles[i])
                     break
 
-        ReturnEventsListe = []
-        PILImages = []
-        for event in events_in_frame:
+        returnliste = []
+        for i, event in enumerate(events_in_frame):
             if nb_event_in_frame > 1:
                 # On créé un doc avec un seul élément pour savoir exactement
                 # quel évènement donne quelles boxes
                 docCopie = doc.doc_event_donne(event)
             else:
                 docCopie = doc
+
             t = context.make_track()
             t.populate(docCopie)
             resultats_libass = renderer.render_frame(t, timestamp)
-
+            if SIZE is not None and SIZE != (0,0):
+                biggest_h, biggest_w, smallest_dist_x, smallest_dist_y = 0, 0, 0, 0
+            else: # No sizes so create small images
+                biggest_h, biggest_w, smallest_dist_x, smallest_dist_y = resultats_libass.get_distances_list()
             PIL = resultats_libass.to_pil(SIZE)
-            PILImages.append(PIL)
+            event_tuple=(PIL,[])
+            # TODO : faire un dictonnaire de classe
             if not multiline:
                 events_list = splitDialogue(event)
                 boxes_list = trier_boxes_par_position(
-                    resultats_libass.to_singleline_boxes(padding=padding)
+                    resultats_libass.to_singleline_boxes(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
                 )
                 if len(events_list) != len(boxes_list):
                     raise ValueError(
@@ -765,16 +902,17 @@ class Video:
                         "Event": events_list[i],
                         "Boxes": boxes_list[i]
                     }
-                    ReturnEventsListe.append(FrameToBoxEvent(**dict_event))
+                    event_tuple[1].append(FrameToBoxEvent(**dict_event))
             else:
                 dict_event = {
                         "Event": event,
-                        "Boxes": resultats_libass.to_box(padding=padding)
+                        "Boxes": resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
                     }
-                ReturnEventsListe.append(
+                event_tuple[1].append(
                     FrameToBoxEvent(**dict_event)
                 )
-        return ReturnEventsListe, PILImages
+            returnliste.append(eventWithPil(image=event_tuple[0], events=event_tuple[1]))
+        return eventWithPilList(returnliste)
 
     def extract_subtitle_boxes_from_frame(
         self,  timestamp: int | timedelta, renderer: RendererClean.Renderer,
@@ -886,18 +1024,6 @@ class Video:
             "Events": ReturnEventsListe
         }
         return (FrameToBoxResult(**dict_result), base)
-    
-    def frame_to_multiple_images():
-        ...
-        # TODO : prend en entrée timestamp, renderer, context, piste. multiline:bool ?
-
-        # TODO : mêmes checks que extract_subtitle_boxes_from_frame
-
-        # TODO : utilisation de get_subtitle_boxes
-        
-        # TODO : flouter ?
-
-        # TODO : renvoyer une liste de texte/images
 
     @classmethod
     def make_video(cls, path_to_mkv: str| Path) -> 'Video':
@@ -949,21 +1075,3 @@ class Video:
             episode.docs = docs
         return episode
 
-
-if __name__ == '__main__':
-    vid = Video.make_video(r"/home/onyxia/work/tmp/testvid.mkv")
-    vid.extractSub(0, "subtest")
-    SIZE = (1920, 1080)
-    ctx = RendererClean.Context()
-    ctx.fonts_dir = br"/home/onyxia/work/tmp/attachement"
-    r = ctx.make_renderer()
-    r.set_fonts(fontconfig_config="\0")
-    r.set_all_sizes(SIZE)
-    vid.frame_to_box(
-        405,
-        renderer=r,
-        context=ctx,
-        piste=0,
-        SortieImage=r'C:\code\SubProject\Code\B2_Segmentation\sortie405.png',
-        transform_sub=True
-    )
