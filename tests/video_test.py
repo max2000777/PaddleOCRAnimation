@@ -85,3 +85,22 @@ def test_eventWithPilList_topil():
     assert isinstance(event_list.to_pil(), Image.Image)
     assert event_list.to_pil().size == (1920, 1080)
 
+def test_add_padding():
+    vid, ctx, r = initialise_video()
+    event_list = vid.get_subtitle_boxes(
+        timestamp=26,
+        SIZE=(0, 0),
+        renderer=r,
+        context=ctx,
+        piste=0,
+        multiline=False
+    )
+    padding = (10, 33, 44, 55)
+
+    assert event_list[1].image.size == (621, 61)
+    assert event_list[1].events[0].Boxes.full_box == [[0, 0], [621, 0], [621, 61], [0, 61]]
+
+    event_list[1].add_padding(padding=padding)
+
+    assert event_list[1].image.size == (621+10+44, 61+33+55)
+    assert event_list[1].events[0].Boxes.full_box == [[10, 33], [631, 33], [631, 94], [10, 94]]
