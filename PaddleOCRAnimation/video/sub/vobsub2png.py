@@ -1,5 +1,6 @@
 import subprocess
 from os.path import exists, dirname, abspath, join
+import importlib.resources
 
 from platform import system
 
@@ -23,9 +24,9 @@ def vobsub2png(idx_path: str, outputdir: str | None = None):
     plateforme = system()
     base_dir = dirname(dirname(abspath(__file__)))
     if plateforme == 'Windows':
-        binary_path = join(base_dir, 'libs', 'Windows', 'vobsub2png.exe')
+        binary_path = str(importlib.resources.files("PaddleOCRAnimation.libs.Windows")/ "vobsub2png")
     elif plateforme == 'Linux':
-        binary_path = join(base_dir, 'libs', 'linux', 'vobsub2png')
+        binary_path = str(importlib.resources.files("PaddleOCRAnimation.libs.linux")/ "vobsub2png")
     else:
         raise RuntimeError(
             f"La plateforme {plateforme} n'est pas supportée"
