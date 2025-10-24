@@ -548,7 +548,7 @@ class Video:
             'sous_titres': pistes_sous_titres
         }
 
-    def extract_frame_as_pil(self, timestamp: int | timedelta) -> Image.Image:
+    def extract_frame_as_pil(self, timestamp: float | timedelta) -> Image.Image:
         """
     Extrait une image (frame) de la vidéo (SANS LES SOUS TITRES) à un instant donné
     et la retourne sous forme d'objet `PIL.Image`.
@@ -570,17 +570,20 @@ class Video:
         if not cap.isOpened():
             raise IOError(f"Impossible d'ouvrir la vidéo : {mkv_path}")
         if isinstance(timestamp, timedelta):
-            timestamp = int(timestamp.total_seconds())
-        if not isinstance(timestamp, int):
+            timestamp = float(timestamp.total_seconds())
+        if not (isinstance(timestamp, float) or isinstance(timestamp, int)):
             raise ValueError(
-                f"timestamp doit être un int (secondes) ou un timedelta (ici {type(timestamp)})"
+                f"timestamp doit être un float (secondes) ou un timedelta (ici {type(timestamp)})"
             )
 
         if self.duree < timestamp:
             raise ValueError(
                 f"La vidéo ({self.duree:.0f}s) est plus courte que le timestamp ({timestamp:.0f})"
             )
-        cap.set(cv2.CAP_PROP_POS_MSEC, timestamp * 1000)
+        
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_idx = int(round(timestamp * fps))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, timestampo = cap.read()
 
         cap.release()
@@ -737,7 +740,7 @@ class Video:
             self.prase_file(piste=piste)
 
     def render_frame(
-        self, timestamp: int | timedelta, piste: int = 0,
+        self, timestamp: float | timedelta, piste: int = 0,
         dump_attachement: bool = False, attachement_path: str | None = None
     ) -> Image.Image:
         """
@@ -748,7 +751,7 @@ class Video:
         l'image vidéo. Les polices nécessaires sont extraites si besoin.
 
         Args:
-            timestamp (int | timedelta):
+            timestamp (float | timedelta):
                 - Si int, temps en secondes depuis le début de la vidéo.
                 - Si timedelta, durée depuis le début de la vidéo.
             piste (int, optional): Index de la piste de sous-titres à utiliser (par défaut 0).
@@ -765,10 +768,10 @@ class Video:
             PIL.Image.Image: Image RGBA contenant la frame vidéo avec les sous-titres rendus
                 à l'instant donné.
         """
-        if isinstance(timestamp, int):
+        if isinstance(timestamp, int) or isinstance(timestamp, float):
             timestamp = timedelta(seconds=timestamp)
         if not isinstance(timestamp, timedelta):
-            raise ValueError(f"timestamp doit être un int ou un timedelta (ici {type(timestamp)})")
+            raise ValueError(f"timestamp doit être un float ou un timedelta (ici {type(timestamp)})")
         if len(self.extracted_sub_path) < piste+1:
             raise ValueError(
                 f"La vidéo n'a que {len(self.extracted_sub_path)} pistes extraites,"
@@ -802,7 +805,7 @@ class Video:
             base = Image.alpha_composite(base, image.to_pil(SIZE))
         return base
     
-    def get_subtitle_boxes(self,  timestamp: int | timedelta, SIZE: tuple[int, int], renderer: RendererClean.Renderer,
+    def get_subtitle_boxes(self,  timestamp: float | timedelta, SIZE: tuple[int, int], renderer: RendererClean.Renderer,
         context: RendererClean.Context, piste: int,
         transform_sub: bool = False, multiline: bool = False,
         padding: tuple[int, int, int, int] = (7, 10, 0, 0)
@@ -816,7 +819,7 @@ class Video:
         l'application optionnelle de transformations de style, et le padding autour des boîtes.
 
         Args:
-            timestamp (int | timedelta): Instant de la vidéo pour lequel extraire les sous-titres.
+            timestamp (float | timedelta): Instant de la vidéo pour lequel extraire les sous-titres.
             SIZE (tuple[int, int]): Taille de l'image (largeur, hauteur).
             renderer (RendererClean.Renderer): Objet de rendu libass.
             context (RendererClean.Context): Contexte de rendu libass.
@@ -853,7 +856,7 @@ class Video:
                 x_min = min(point[0] for point in box.full_box)
                 return (y_min, x_min)
             return sorted(boxes, key=position_cle)
-        if isinstance(timestamp, int):
+        if isinstance(timestamp, float) or isinstance(timestamp, int):
             timestamp = timedelta(seconds=timestamp)
         doc = self.docs[piste]
         nb_event_in_frame, events_in_frame = doc.nb_event_dans_frame(timestamp, returnEvents=True)
@@ -915,7 +918,7 @@ class Video:
         return eventWithPilList(returnliste)
 
     def extract_subtitle_boxes_from_frame(
-        self,  timestamp: int | timedelta, renderer: RendererClean.Renderer,
+        self,  timestamp: float | timedelta, renderer: RendererClean.Renderer,
         context: RendererClean.Context, piste: int = 0, 
         include_video_background: bool = True, draw_boxes: bool = False,
         annotate_boxes: bool = False, save_image: bool = True, SortieImage: str | None = None,
@@ -935,7 +938,7 @@ class Video:
             6. (Optionnel) sauvegarde l'image finale sur disque.
 
         Args:
-            timestamp (int | timedelta): Instant de la vidéo (en secondes ou timedelta).
+            timestamp (float | timedelta): Instant de la vidéo (en secondes ou timedelta).
             renderer (RendererClean.Renderer): Objet de rendu libass.
             context (RendererClean.Context): Contexte de rendu libass.
             piste (int, optional): Index de la piste de sous-titres à utiliser (par défaut 0).
@@ -960,7 +963,7 @@ class Video:
             ValueError: Si le timestamp est invalide ou hors durée.
             ValueError: Si la piste n'est pas parsée (voir `Video.prase_file`).
         """
-        if isinstance(timestamp, int):
+        if isinstance(timestamp, float) or isinstance(timestamp, int):
             timestamp = timedelta(seconds=timestamp)
         if not isinstance(timestamp, timedelta):
             raise ValueError(f"timestamp doit être un int ou un timedelta (ici {type(timestamp)})")
