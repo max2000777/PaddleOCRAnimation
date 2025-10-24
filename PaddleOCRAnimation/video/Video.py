@@ -1074,4 +1074,64 @@ class Video:
         if docs:
             episode.docs = docs
         return episode
+    
+    def choose_sub_track(self, langage: str = 'fre',
+                  forbidden_words: list[str] | None = None
+                  ) -> tuple[int | None, str | None]:
+        """
+        Randomly selects the most suitable subtitle track for a given language.
+
+        The function filters available subtitle tracks based on language, codec type,
+        and optionally forbidden words in the title. Among valid candidates, it randomly 
+        chooses one, giving preference to tracks with higher FPS values (indicating more completeness).
+
+        Args:
+            langage (str, optional): Target language code (e.g., `fre` for French). Defaults to `fre`.
+            forbidden_words (list[str] | None, optional): Words to exclude from titles. Defaults to a preset list.
+
+        Returns:
+            tuple[int | None, str | None]: The selected subtitle track's ID and title, 
+            or `(None, None)` if no suitable track is found.
+        """
+        def choisir_pondere(liste, alpha: float = 0.8):
+            """permet de choisir une piste au hasard mais le fps joue un role
+            """
+            # éviter les fps nuls
+            fps_list = [max(0.01, piste.get('fps', 0.01)) ** alpha for piste in liste]
+            total = sum(fps_list)
+            poids = [fps / total for fps in fps_list]
+            piste = random.choices(liste, weights=poids, k=1)[0]
+            return piste['id_sub'], piste['title']
+        
+        sous_titres = self.sous_titres
+        mots_interdis = ['canada', 'forced', 'basque', 'sings'] if forbidden_words is None else forbidden_words
+        bon_sous_titres = []
+        for piste in sous_titres:
+            if piste['langage'] == langage and piste['codec'] in ['ass', 'subrip']:
+                bon_sous_titres.append(piste)
+
+        if len(bon_sous_titres) == 1:
+            return bon_sous_titres[0]['id_sub'], bon_sous_titres[0]['title']
+
+        encore_mieux = []
+        for piste in bon_sous_titres:
+            # On a trop de pistes francaises, il faut faire un tris
+            if (
+                piste.get('fps', 0) and  # supprime les pistes avec très peu de subs (piste de DUB)
+                not any(mot.lower() in piste.get('title', '').lower() for mot in mots_interdis)
+                # supprime les pistes francaises mais pas vraiment
+            ):
+                encore_mieux.append(piste)
+
+        if len(encore_mieux) == 1:
+            # après filtrage on a qu'une seule piste donc on la renvoie
+            return encore_mieux[0]['id_sub'], encore_mieux[0]['title']
+        elif len(bon_sous_titres) != 0 and len(encore_mieux) == 0:
+            # On a supprimé toutes les pistes, il faut choisir au hasard
+            return choisir_pondere(bon_sous_titres)
+        elif len(encore_mieux) > 1:
+            # Malgré les filtrages on a plus de une piste, on choisis au hasard
+            return choisir_pondere(encore_mieux)
+
+        return None, None
 

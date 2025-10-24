@@ -109,3 +109,11 @@ def test_add_padding():
 
     assert event_list[1].image.size == (621+10+44, 61+33+55)
     assert event_list[1].events[0].Boxes.full_box == [[10, 33], [631, 33], [631, 94], [10, 94]]
+
+def test_choose_sub_track():
+    vid, ctx, r = initialise_video()
+    assert len(vid.sous_titres) ==2, 'the test video should have two sub tracks'
+
+    i, name = vid.choose_sub_track()
+    assert type(i) == int
+    assert (i==1 and name == 'Edits') or (name == 'Complets' and i ==0)
