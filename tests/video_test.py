@@ -57,6 +57,11 @@ def test_initialise_function():
     vid, ctx, r = initialise_video()
     assert isinstance(vid, Video) and isinstance(ctx, Context) and isinstance(r, Renderer)
 
+def test_extract_frame_as_pil():
+    vid, ctx, r = initialise_video()
+    image = vid.extract_frame_as_pil(timestamp=26)
+    assert image.size == (1920, 1080)
+
 def test_get_subtitle_boxes():
     vid, ctx, r = initialise_video()
     event_list = vid.get_subtitle_boxes(

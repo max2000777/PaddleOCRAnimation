@@ -520,7 +520,7 @@ class Video:
             if (
                 stream['codec_type'] == 'video'
                 and stream.get("codec_name") != "mjpeg"
-                and stream.get('avg_frame_rate') != '0/0'
+                and stream.get('avg_frame_rate') != '0/0' # some video stream can in fact be a image
             ):
                 SIZE = (stream['width'], stream['height'])
             if stream['codec_type'] == 'subtitle':
