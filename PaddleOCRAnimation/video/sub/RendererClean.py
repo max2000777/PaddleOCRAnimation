@@ -90,18 +90,23 @@ class Box:
         return x_min, y_min, x_max, y_max  # gauche, haut, droite, bas
     
     def add_padding(self, padding: tuple[int, int, int, int]):
-        """Shift the box coordinates according to the padding applied to the image.
+        """Shift the box coordinates according to padding or cropping applied to the image.
 
         The padding is defined as (left, top, right, bottom). 
-        When padding is added to the left or top of the image, 
-        the box is moved rightward and downward accordingly.
+        Positive values indicate that padding is added to the image, 
+        which moves the box rightward or downward.
+        Negative values indicate that a region is cropped (removed) from the image, 
+        which moves the box leftward or upward.
+
+        The box coordinates are clamped to remain non-negative (>= 0) after the shift.
 
         Args:
-            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom).
+            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom). 
+                Can include negative values to represent cropping.
 
         Raises:
-            ValueError: If padding is not a tuple of four integers.
-        """
+            ValueError: If `padding` is not a tuple of four integers.
+    """
         if (
             not isinstance(padding, tuple) 
             or not all([isinstance(a, int) for a in padding]) 
@@ -111,10 +116,10 @@ class Box:
         
         padding_left, padding_top, _, _ = padding
 
-        self.haut_gauche = [self.haut_gauche[0]+padding_left, self.haut_gauche[1]+padding_top]
-        self.haut_droit = [self.haut_droit[0]+padding_left, self.haut_droit[1]+padding_top]
-        self.bas_droit = [self.bas_droit[0]+padding_left, self.bas_droit[1]+padding_top]
-        self.bas_gauche = [self.bas_gauche[0]+padding_left, self.bas_gauche[1]+padding_top]
+        self.haut_gauche = [max(self.haut_gauche[0]+padding_left, 0), max(self.haut_gauche[1]+padding_top, 0)]
+        self.haut_droit = [max(self.haut_droit[0]+padding_left, 0), max(self.haut_droit[1]+padding_top, 0)]
+        self.bas_droit = [max(self.bas_droit[0]+padding_left, 0), max(self.bas_droit[1]+padding_top, 0)]
+        self.bas_gauche = [max(self.bas_gauche[0]+padding_left, 0), max(self.bas_gauche[1]+padding_top, 0)]
 
         self.full_box = [
             self.haut_gauche,

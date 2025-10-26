@@ -6,6 +6,7 @@ from . import RendererClean
 from .RendererClean import Event
 from os.path import exists, abspath
 from pathlib import Path
+from .DocumentSrt import srt_to_ass_lines, parse_str_file
 
 class DocumentPlus(ass.Document):
     """
@@ -199,25 +200,33 @@ class DocumentPlus(ass.Document):
     @classmethod
     def parse_file_plus(cls, f: TextIOWrapper | Path | str, sort: bool = True) -> 'DocumentPlus':
         """
-        Parse un fichier ASS et retourne un objet DocumentPlus,
-        avec possibilité de trier automatiquement les événements.
+        Parse an ASS or SRT subtitle file and return a DocumentPlus object.
+
+        This method extends `parse_file` by supporting both ASS and SRT files.
+        If an SRT file is provided, it is first converted to ASS format before parsing.
+        Optionally, the parsed events can be automatically sorted by start time.
 
         Args:
-            f (file-like object): Fichier ASS ouvert en lecture (texte).
-            sort (bool, optional): Si `True` (par défaut), trie les
-                événements par temps de début après le parsing.
+            f (TextIOWrapper | Path | str): File object or path to an ASS or SRT file.
+            sort (bool, optional): If True (default), events are sorted by start time.
 
         Returns:
-            DocumentPlus: Un objet DocumentPlus contenant les données du fichier ASS,
-                éventuellement triées.
+            DocumentPlus: A parsed document containing subtitle events and styles.
         """
         if isinstance(f, TextIOWrapper):
             doc = cls.parse_file(f)
-        elif isinstance(f, Path) or (isinstance(f, str) and Path(f).exists):
+        elif (isinstance(f, Path) or isinstance(f, str)) and str(f).endswith('.srt'):
+            # the file is a .srt file, not a .ass file
+            # things need to be done to simulate the ass format
+            srt_list = parse_str_file(f)
+            srt_list = srt_to_ass_lines(srt_list)
+            doc = cls.parse_file(srt_list)
+        elif ((isinstance(f, Path) and f.exists()) or (isinstance(f, str) and Path(f).exists())) and (str(f).endswith('.ass')):
             with open(f,  encoding='utf_8_sig') as file:
                 doc = cls.parse_file(file)
         else:
-            raise ValueError(f'f should be a TextIOWrapper or a valid path')
+            raise ValueError(f'f should be a TextIOWrapper or a valid path to a .srt or .ass file')
+        
         if sort:
             doc = doc.sort_events()
         return doc
