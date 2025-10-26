@@ -1,11 +1,11 @@
 from os.path import exists, dirname, abspath, join, relpath, splitext, basename, isabs
-from shutil import which
+from shutil import which, copy
 from typing import TypedDict, Optional, Union, overload, Literal
 import subprocess
 from json import loads
 from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from datetime import timedelta
-from os import makedirs, chdir, getcwd
+from os import makedirs, chdir, getcwd, listdir
 from warnings import warn
 from .sub import RendererClean
 from .sub.DocumentPlus import DocumentPlus
@@ -26,7 +26,11 @@ import re
 import importlib.resources
 from pathlib import Path
 from pprint import pformat
+import logging
+from .iso_codes import iso_639_dict
 
+
+logger = logging.getLogger(__name__)
 
 try:
     system = system()
@@ -200,6 +204,8 @@ class SubTrackInfo(TypedDict):
         fps (float) : Fréquence estimée des sous-titres (nombre de sous-titres par seconde),
             calculée comme `nb_frames / durée`. La fiabilité dépend de la disponibilité
             de ces deux informations.
+
+        is_extarnal (bool) : Si le sous titre est dans le MKV ou juste dans le même dossier
     """
     index: int
     id_sub: int
@@ -208,6 +214,7 @@ class SubTrackInfo(TypedDict):
     codec: Optional[str]
     nb_frames: Union[str, int]
     fps: float
+    is_extarnal: bool
 
 
 class MKVInfo(TypedDict):
@@ -335,17 +342,28 @@ class eventWithPil:
         return base
     
     def add_padding(self, padding: tuple[int, int, int, int]):
-        """Add transparent padding around the subtitle image and update all box coordinates.
+        """Add or remove transparent padding around the subtitle image and update event bounding boxes.
 
-        The padding is defined as (left, top, right, bottom). 
-        A transparent border is added around the current RGBA image, 
-        and each event's bounding box is shifted accordingly.
+        This method adjusts the current RGBA subtitle image by adding or removing padding 
+        on each side, and updates all associated event bounding boxes accordingly.
+
+        The padding is defined as (left, top, right, bottom):
+        - Positive values add transparent space around the image.
+        - Negative values crop the image, removing pixels from the corresponding sides.
+
+        When cropping occurs, any subtitle event (i.e., a line from an ASS or SRT file) 
+        whose bounding box falls completely outside the visible image area is removed. 
+        Events partially affected by cropping are clamped so that their coordinates remain 
+        within the new image boundaries.
 
         Args:
-            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom).
+            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom). 
+                Positive values expand the image, negative values crop it.
 
         Raises:
-            ValueError: If padding is not a tuple of four integers.
+            ValueError: 
+                - If `padding` is not a tuple of four integers.
+                - If the requested negative padding would crop more than the image size.
         """
         if (
             not isinstance(padding, tuple) 
@@ -354,24 +372,44 @@ class eventWithPil:
         ):
             raise ValueError(f'padding should be a tuple with 4 int, here {padding}')
         previous_w, previous_h = self.image.size
+        if (min(padding[0],0)+min(padding[2],0)+previous_w < 0) or (min(padding[1],0)+min(padding[3],0)+previous_h < 0):
+            raise ValueError("Cannot crop more than the size of the image")
+
+        if any([a < 0 for a in padding]):
+            self.image=self.image.crop((-min(0,padding[0]), -min(0, padding[1]), previous_w+min(0, padding[2]), previous_h+min(0, padding[3])))
+            previous_w, previous_h = self.image.size
+        
         new_image = Image.new(
             mode="RGBA",
             size=(
-                previous_w+padding[0]+padding[2],
-                previous_h+padding[1]+padding[3]
+                previous_w+max(padding[0],0)+max(padding[2],0),
+                previous_h+max(padding[1],0)+max(padding[3],0)
             ),
             color=(0, 0, 0, 0)
         )
-        new_image.paste(self.image, (padding[0], padding[1]), self.image)
+        new_image.paste(self.image, (max(padding[0],0), max(padding[1],0)), self.image)
         self.image = new_image
 
+        newevents = []
         for event in self.events:
             event.Boxes.add_padding(padding=padding)
+            if (padding[2]<0): 
+                # the bow doesnt know the image size so it needs to be done here
+                event.Boxes.bas_droit[0] = min(event.Boxes.bas_droit[0], new_image.size[0])
+                event.Boxes.haut_droit[0] = event.Boxes.bas_droit[0]
+                if event.Boxes.bas_droit[0] < event.Boxes.bas_gauche[0]:
+                     event.Boxes.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
+            if (padding[3]<0):
+                event.Boxes.bas_droit[1] = min(event.Boxes.bas_droit[1], new_image.size[1])
+                event.Boxes.bas_gauche[1] = event.Boxes.bas_droit[1]
+                if event.Boxes.bas_droit[1] < event.Boxes.haut_droit[1]:
+                    event.Boxes.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
 
-
-
-    
-
+            if event.Boxes.full_box != [[0, 0], [0, 0], [0, 0], [0, 0]]:
+                newevents.append(event)
+        self.events = newevents
+            
+            
 
 
 
@@ -438,6 +476,35 @@ class eventWithPilList(list[eventWithPil]):
                     base = Image.alpha_composite(base, line.Boxes.to_pil(size))
 
         return base
+    def add_padding(self, padding: tuple[int, int, int, int]):
+        """Apply padding to all subtitle events in the list.
+
+        This method iterates over each `eventWithPil` in the list and applies the 
+        specified padding using each event's `add_padding` method. Positive padding 
+        expands the image around each event, while negative padding crops it. 
+        Any events that become fully outside their image after cropping are automatically 
+        removed by the event-level method.
+
+        Args:
+            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom).
+                Positive values add transparent space, negative values crop the image.
+
+        Raises:
+            ValueError: 
+                - If `padding` is not a tuple of four integers.
+                - If any of the individual event's padding operations would crop more than 
+                  its image size (handled by the event's own `add_padding` method).
+        """
+        if (
+            not isinstance(padding, tuple) 
+            or not all([isinstance(a, int) for a in padding]) 
+            or not len(padding)==4
+        ):
+            raise ValueError(f'padding should be a tuple with 4 int, here {padding}')
+        
+        for event in self:
+            event.add_padding(padding=padding)
+
 
 class Video:
     path: str
@@ -460,36 +527,44 @@ class Video:
 
     @staticmethod
     def recup_infos_MKV(cheminVersMKV: str):
-        """
-        Extrait des informations sur les pistes de sous-titres d'un fichier MKV via ffprobe.
+        """Extracts metadata and subtitle information from an MKV video file.
+
+        This method uses `ffprobe` to analyze the provided MKV file and retrieve 
+        technical details such as video resolution, duration, and available subtitle tracks 
+        (both embedded and external `.ass` or `.srt` files located in the same directory).
 
         Args:
-            cheminVersMKV (str): Chemin vers le fichier MKV à analyser.
+            cheminVersMKV (str): Path to the MKV file to analyze.
 
         Raises:
-            FileExistsError: Si le fichier spécifié n'existe pas.
-            SystemError: Si ffprobe n'est pas installé ou absent du PATH.
-            RuntimeError: Si une erreur se produit lors de l'exécution de ffprobe.
+            SystemError: If `ffprobe` is not installed or not found in the system PATH.
+            ValueError: If the provided path does not point to an `.mkv` file.
+            FileExistsError: If the specified MKV file does not exist.
+            RuntimeError: If `ffprobe` fails to process the file.
 
         Returns:
-            dict: Un dictionnaire `MKVInfo` contenant :
-                - 'durée' (float): Durée du fichier en secondes (0 si non disponible).
-                - 'taille' (tuple[int]): la taille de la vidéo (largeur, hauteur).
-                - 'sous_titres' (list[dict]): Liste de dictionnaires représentant chaque piste
-                    de sous-titres, avec :
-                    - 'index' (int): Index de la piste dans le conteneur.
-                    - 'id_sub' (int): ID de piste de sous-titres relatif (0, 1, 2...).
-                    - 'langage' (str): Langue déclarée (ou "inconnu").
-                    - 'title' (str): Titre de la piste (ou "non nommé").
-                    - 'codec' (str | None): Codec utilisé (ex: "ass", "srt").
-                    - 'nb_frames' (str | int): Nombre de sous-titres détectés (souvent chaîne).
-                    - 'fps' (float): Estimation des sous-titres/seconde
-                    (peut être faux si nb_frames non fiable).
+            dict: A dictionary containing:
+                - 'durée' (float): Duration of the video in seconds.
+                - 'taille' (tuple): Video resolution as (width, height).
+                - 'sous_titres' (list[dict]): List of subtitle tracks with fields:
+                    * 'index' (int | None)
+                    * 'id_sub' (int)
+                    * 'langage' (str)
+                    * 'title' (str)
+                    * 'codec' (str)
+                    * 'nb_frames' (int | None)
+                    * 'fps' (float)
+                    * 'is_extarnal' (bool)
         """
         if which("ffprobe") is None:
             raise SystemError("ffprobe n'est pas installé ou n'est pas dans le PATH")
+        if not cheminVersMKV.endswith('.mkv'):
+            raise ValueError(f'Please provide a path to a mkv file')
+        if isinstance(cheminVersMKV, Path):
+            cheminVersMKV = str(cheminVersMKV)
         if not exists(cheminVersMKV):
             raise FileExistsError(f"Le fichier MKV n'existe pas :\n{cheminVersMKV}")
+
         commande = [
                 "ffprobe",
                 "-v", "error",
@@ -537,10 +612,40 @@ class Video:
                     'title': stream.get('tags', {}).get('title', 'non nommé'),
                     'codec': stream.get('codec_name', None),
                     'nb_frames': nb_frames,
-                    'fps': float(nb_frames)/float(duration) if duration is not None else 0
+                    'fps': float(nb_frames)/float(duration) if duration is not None else 0,
+                    'is_extarnal':False
+
                 }
                 pistes_sous_titres.append(info_sous_titres)
                 id_sub += 1
+        
+        files_in_dir = [
+            file for file in listdir(dirname(cheminVersMKV)) if (file.endswith('.ass') or file.endswith('.srt')) and file.startswith(basename(cheminVersMKV)[:-4])
+        ]
+        for file in files_in_dir:
+            # sometimes a sub can be next to the mkv file
+            # media players detect thoses by default, we try to recreate that
+            regex = re.findall(
+                pattern=r"\.([a-z]{2})\.(srt|ass)$",
+                string=file
+            )
+            if len(regex)==1 and len(regex[0])==2 and regex[0][0] in iso_639_dict:
+                # a language was decected in the name of the external subfile
+                lang = iso_639_dict[regex[0][0]]
+            else:
+                lang = 'inconnu'
+            info_sous_titres = {
+                    'index': None,
+                    'id_sub': id_sub,
+                    'langage': lang,
+                    'title': file,
+                    'codec': 'ass' if file.endswith('.ass') else 'subrip',
+                    'nb_frames': None,
+                    'fps': 500, # beacause fps is important, we give a high value
+                    'is_extarnal':True
+                }
+            id_sub+=1
+            pistes_sous_titres.append(info_sous_titres)
 
         return {
             'durée': duration,
@@ -642,45 +747,31 @@ class Video:
             doc = DocumentPlus.parse_file_plus(f)
         self.docs[piste] = doc
 
-    def extractSub(self, piste: int, sortie: str,
+    def extractSub(self, piste: int, sortie: str | None = None,
                    prase_after: bool = True, codec: str | None = None) -> None:
-        """
-        Extrait une piste de sous-titres (ASS, SRT) depuis un fichier MKV en utilisant FFmpeg.
+        """Extracts a subtitle track (ASS or SRT) from the MKV video.
 
-        Si le fichier de sortie existe déjà, il est automatiquement écrasé (option -y).
-        Un nettoyage est appliqué au fichier extrait pour supprimer d'éventuels caractères null
-        (`\\x00`) présents dans certaines pistes.
-        Si le codec source est 'subrip' (SRT), une conversion automatique en format ASS est
-        effectuée via FFmpeg.
+    This method uses `ffmpeg` to extract the specified subtitle track, 
+    either embedded in the MKV file or as an external file in the same directory.  
+    If the extractes file is a `.srt` file, it will be converted to a `.ass` file with ffmpeg.
+    The extracted subtitle can optionally be  parsed afterward.
 
-        Args:
-            cheminVersMKV (str): Chemin absolu ou relatif vers le fichier vidéo MKV.
-            piste (int): Index de la piste de sous-titres à extraire (commence à 0).
-            sortie (str): Chemin du fichier de sortie, sans extension. L'extension appropriée
-                (.ass ou .srt) sera ajoutée automatiquement.
-            codec (str, optional): Codec attendu pour la piste à extraire
-                'ass' ou 'subrip'. Par défaut 'ass'.
+    Args:
+        piste (int): Subtitle track ID to extract.
+        sortie (str | None, optional): Output path for the extracted subtitle file. 
+            Defaults to the MKV filename with the track index appended.
+        prase_after (bool, optional): Whether to parse the extracted subtitle file after extraction. Defaults to True.
+        codec (str | None, optional): Codec of the subtitle ('ass' or 'subrip'). 
+            If None, it is inferred automatically.
 
-        Raises:
-            SystemError: Si FFmpeg n'est pas installé ou non détecté dans le PATH.
-            FileExistsError: Si le fichier MKV source n'existe pas.
-            ValueError: Si l'index de piste n'est pas un entier ou si le codec n'est ni 'ass'
-                 ni 'subrip'.
-            RuntimeError: Si la conversion du format SRT vers ASS échoue.
-
-        Example:
-            >>> extractSubFromMKV(
-            ...     cheminVersMKV=r"C:\\vids\\anime.mkv",
-            ...     piste=1,
-            ...     sortie=r"C:\\subs\\anime_episode01",
-            ...     codec='subrip'
-            ... )
-            # → Extrait la piste 1 (SRT), la nettoie, et crée deux fichiers :
-            #   - anime_episode01.srt (intermédiaire nettoyé)
-            #   - anime_episode01.ass (version convertie en ASS)
-        """
+    Raises:
+        SystemError: If `ffmpeg` is not installed or not found in the PATH.
+        FileExistsError: If the MKV file does not exist.
+        ValueError: If the subtitle index is invalid or the codec is unsupported.
+        RuntimeError: If the extraction or conversion process fails.
+    """
         # TODO : mettre a jours documentation
-        cheminVersMKV, sortie = abspath(self.path), abspath(sortie)
+        cheminVersMKV = abspath(self.path)
         if which("ffmpeg") is None:
             raise SystemError("ffmpeg n'est pas installé ou n'est pas présent dans le PATH")
         if not exists(cheminVersMKV):
@@ -690,31 +781,42 @@ class Video:
                 f"La vidéo n'a que {len(self.sous_titres)} sous titres, "
                 f"il est donc impossible d'accéder à la {piste}ième"
             )
-        if exists(sortie):
-            warn(f"La sortie {sortie} existe déjà, elle va être écrasée", UserWarning)
+        is_external, title = False, 'No title'
         if not isinstance(piste, int):
             raise ValueError("La piste doit être un entier")
-        if codec is None:
-            for st in self.sous_titres:
-                if st['id_sub'] == piste:
-                    codec = st['codec']
+        for st in self.sous_titres:
+            if st['id_sub'] == piste:
+                codec = st['codec'] if codec is None else codec
+                is_external = st.get('is_extarnal', False)
+                title = st.get('title')
         if codec != 'ass' and codec != 'subrip':
             raise ValueError(f"Le codec du sous titre n'est ni ass ni subrip (c'est {codec})")
         mapCodec = {'ass': '.ass', 'subrip': '.srt'}
+        if sortie is None:
+            sortie = abspath(cheminVersMKV)[:-4]+'_'+str(piste)
+        if exists(sortie):
+            warn(f"La sortie {sortie} existe déjà, elle va être écrasée", UserWarning)
         sortie += mapCodec[codec]
         makedirs(dirname(sortie), exist_ok=True)
-        commande = [
-            "ffmpeg",
-            "-i", cheminVersMKV.replace('\\', '/'),
-            "-map", f"0:s:{piste}",
-            "-c:s", "copy",
-            "-y",
-            sortie.replace('\\', '/')
-        ]
-        resultat = subprocess.run(commande, capture_output=True, text=True)
+        if is_external:
+            # the sub not in the mkv but in the same folder
+            copy(
+                join(dirname(cheminVersMKV), str(title)),
+                sortie
+            )
+        else: 
+            commande = [
+                "ffmpeg",
+                "-i", cheminVersMKV.replace('\\', '/'),
+                "-map", f"0:s:{piste}",
+                "-c:s", "copy",
+                "-y",
+                sortie.replace('\\', '/')
+            ]
+            resultat = subprocess.run(commande, capture_output=True, text=True)
 
-        if resultat.returncode != 0:
-            print(f'{" ".join(commande)} \n{resultat.stderr}')
+            if resultat.returncode != 0:
+                print(f'{" ".join(commande)} \n{resultat.stderr}')
 
         with open(sortie, "rb") as f:  # Problème avec OutlawStar, je ne sais pas pourquoi
             content = f.read().replace(b"\x00", b"")
