@@ -147,4 +147,4 @@ def test_choose_sub_track():
 
     i, name = vid.choose_sub_track()
     assert type(i) == int
-    assert (i==1 and name == 'Edits') or (name == 'Complets' and i ==0) or (i == 3 and name == 'testVidExtrait.fr.srt')
+    assert (i==1 and name == 'Edits') or (name == 'Complets' and i ==0) or (i == 2 and name == 'testVidExtrait.fr.srt')
