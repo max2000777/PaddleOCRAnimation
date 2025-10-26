@@ -1,0 +1,23 @@
+1
+00:00:00,040 --> 00:00:03,750
+Impossible d'arrêter un simple vaisseau
+malgré cette armada ?
+
+2
+00:00:05,840 --> 00:00:08,470
+La cible accélère !
+Nous risquons de la perdre !
+
+3
+00:00:09,050 --> 00:00:12,100
+Niveau de combat orange !
+Armement B autorisé !
+
+4
+00:00:12,260 --> 00:00:14,430
+Interceptez-la coûte que coûte !
+
+5
+00:00:14,930 --> 00:00:15,430
+Compris !
+
