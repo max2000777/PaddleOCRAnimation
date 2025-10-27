@@ -38,3 +38,13 @@ def test_event_to_pil():
     assert len(results) == 4, "There should be 4 bitmap at that timing (multiline are separated)"
 
     assert isinstance(results.to_pil((1920, 1080)), PIL.Image.Image), "The image sequence should be able to be turned into a PIL image"
+
+def test_srt_parsing():
+    sub_path = sub.parent /'[Elecman] Capitaine Tylor E03 [BDRIP][1080p x265 10bits Vostfr]_track3_[fre].srt'
+
+    assert sub_path.exists()
+    doc = DocumentPlus.parse_file_plus(sub_path)
+
+    assert len(doc.events) > 300
+    assert doc.events[-1].text==r'{\i1}A bientôt !{\i0}'
+test_srt_parsing()

@@ -8,6 +8,18 @@ from os.path import exists, abspath
 from pathlib import Path
 from .DocumentSrt import srt_to_ass_lines, parse_str_file
 
+def split_dialogue(dialogue:ass.line.Dialogue) -> list[ass.line.Dialogue]:
+    from copy import deepcopy
+    text = dialogue.text.replace(r"\N", r'\n')
+    lines = text.split(r'\n')
+    event_list = []
+    for line in lines:
+        event = deepcopy(dialogue)
+        event.text = line
+        event_list.append(event)
+    return event_list
+
+
 class DocumentPlus(ass.Document):
     """
     Extension de la classe ass.Document pour la manipulation avancée de sous-titres ASS.

@@ -21,17 +21,17 @@ def srt_to_ass_lines(srt_dict_list:list[dict])->list[str]:
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = seconds % 60
-        return f"{hours}:{minutes:02d}:{secs:05.3f}"
+        return f"{hours}:{minutes:02d}:{secs:05.2f}"
     
     def srt_text_to_ass_text(text:str)->str:
         """try to adapt the text to a ass format
         """
         changes = [
-            (r'<b>',r'{\b1}'), (r'<\b>', r'{\b0}'), (r'<i>',r'{\i1}'), (r'<\b>',r'{\b0}'),
-            (r'<u>',r'{\u1}'), (r'<\u>',r'{\u0}'), ('\n', r'\N')
+            (r'<b>',r'{\b1}'), (r'</b>', r'{\b0}'), (r'<i>',r'{\i1}'), (r'</i>',r'{\i0}'),
+            (r'<u>',r'{\u1}'), (r'</u>',r'{\u0}'), ('\n', r'\N')
         ]
         for before, after in changes:
-            text.replace(before, after)
+            text = text.replace(before, after)
         return text
 
     lines = [
@@ -88,6 +88,7 @@ def parse_str_file(file: str | Path | TextIOWrapper)->list[dict]:
         r'((?:.+(?:\r?\n)?)+?)' # the text of the event
         r'(?=\r?\n\d+\r?\n|$)'
     )
+    srt_content = srt_content.lstrip('\ufeff') # sometimes BOM can cause issues
     matches = pattern.findall(srt_content)
 
     st = []
