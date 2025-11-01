@@ -26,6 +26,8 @@ OCRSub.egg-info/
 libass-0.17.4/
 tests/tmp/
 dev/
+create_ocr_dataset.log
+dataset/
 
 #WSL
 *Zone.Identifier
