@@ -28,7 +28,7 @@ system = system()
 fileRoot = dirname(dirname(abspath(__file__)))
 if system == "Windows":
     with importlib.resources.as_file(importlib.resources.files("PaddleOCRAnimation.libs.Windows")/"libass-9.dll") as lib_path:
-        _libass = ctypes.cdll.LoadLibrary(lib_path)
+        _libass = ctypes.cdll.LoadLibrary(str(lib_path))
     _libc = ctypes.cdll.msvcrt
 elif system == "Linux":
     for lib in ["libgraphite2.so.3", "libfribidi.so.0", "libharfbuzz.so.0", "libm.so.6",
@@ -36,13 +36,13 @@ elif system == "Linux":
                 "libpng16.so.16", "libbrotlidec.so.1", "libbrotlicommon.so.1"]:
         try:
             with importlib.resources.as_file(importlib.resources.files("PaddleOCRAnimation.libs.linux") / lib) as lib_path:
-                ctypes.cdll.LoadLibrary(lib_path)
+                ctypes.cdll.LoadLibrary(str(lib_path))
         except OSError as e:
             raise RuntimeError(f"Échec du chargement de {lib} : {e}")
     with importlib.resources.as_file(importlib.resources.files("PaddleOCRAnimation.libs.linux")/ "libass.so.9.4.1") as lib_path:
-                _libass = ctypes.cdll.LoadLibrary(lib_path)
+                _libass = ctypes.cdll.LoadLibrary(str(lib_path))
 
-    _libc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("c"))
+    _libc = ctypes.cdll.LoadLibrary(str(ctypes.util.find_library("c")))
 else:
     raise RuntimeError(f"OS non supporté : {system}")
 
@@ -89,24 +89,32 @@ class Box:
         y_min, y_max = min(ys), max(ys)
         return x_min, y_min, x_max, y_max  # gauche, haut, droite, bas
     
-    def add_padding(self, padding: tuple[int, int, int, int]):
-        """Shift the box coordinates according to padding or cropping applied to the image.
+    def add_padding(self, padding: tuple[int, int, int, int],
+                    image_size: tuple[int, int] | None = None):
+        """Shift and optionally clamp the box coordinates when padding or cropping 
+        is applied to the subtitle image.
 
-        The padding is defined as (left, top, right, bottom). 
-        Positive values indicate that padding is added to the image, 
-        which moves the box rightward or downward.
-        Negative values indicate that a region is cropped (removed) from the image, 
-        which moves the box leftward or upward.
+        The padding is defined as (left, top, right, bottom):  
+        - Positive values add transparent padding around the image, shifting the box 
+        rightward or downward.  
+        - Negative values indicate cropping (pixels removed from edges), shifting 
+        the box leftward or upward.  
 
-        The box coordinates are clamped to remain non-negative (>= 0) after the shift.
+        When `image_size` is provided, the method also ensures that the box 
+        coordinates remain within the image boundaries. Boxes that fall completely 
+        outside after cropping are invalidated (set to [[0, 0], ...]).
 
         Args:
             padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom). 
-                Can include negative values to represent cropping.
+                Positive for expansion, negative for cropping.
+            image_size (tuple[int, int] | None, optional): 
+                The (width, height) of the image after padding/cropping. 
+                If provided, coordinates are clamped to the image boundaries.
 
         Raises:
-            ValueError: If `padding` is not a tuple of four integers.
-    """
+            ValueError: 
+                - If `padding` is not a tuple of four integers.
+        """
         if (
             not isinstance(padding, tuple) 
             or not all([isinstance(a, int) for a in padding]) 
@@ -121,16 +129,27 @@ class Box:
         self.bas_droit = [max(self.bas_droit[0]+padding_left, 0), max(self.bas_droit[1]+padding_top, 0)]
         self.bas_gauche = [max(self.bas_gauche[0]+padding_left, 0), max(self.bas_gauche[1]+padding_top, 0)]
 
+        if image_size is not None:
+            if (padding[2]<0): 
+                self.bas_droit[0] = min(self.bas_droit[0], image_size[0])
+                self.haut_droit[0] = self.bas_droit[0]
+            if (padding[3]<0):
+                self.bas_droit[1] = min(self.bas_droit[1], image_size[1])
+                self.bas_gauche[1] = self.bas_droit[1]
         self.full_box = [
             self.haut_gauche,
             self.haut_droit,
             self.bas_droit,
             self.bas_gauche
         ]
-
+        if self.bas_droit[0] <= self.bas_gauche[0]:
+            # The box is considered non existant 
+            self.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
+        if self.bas_droit[1] <= self.haut_droit[1]:
+                self.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
 
     def to_pil(self, size,
-               border_color: int | tuple[int] = (255, 0, 0, 255),
+               border_color: int | tuple[int, int, int, int] = (255, 0, 0, 255),
                border_width=3, use_type: bool = True) -> PILIMAGE.Image:
         """
         Génère une image PIL contenant la boîte (polygone) représentée par cet objet Box.
@@ -238,7 +257,7 @@ class Image(ctypes.Structure):
 
         return typeDict[type]
 
-    def __getitem__(self, loc) -> int:
+    def __getitem__(self, loc: tuple[int, int]) -> int:
         x, y = loc
         # Numpy fait la convertion (hauteur, largeur) et non (largeur, hauteur)
         return self.bitmapNumpy[y, x]

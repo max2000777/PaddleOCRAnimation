@@ -148,3 +148,27 @@ def test_choose_sub_track():
     i, name = vid.choose_sub_track()
     assert type(i) == int
     assert (i==1 and name == 'Edits') or (name == 'Complets' and i ==0) or (i == 2 and name == 'testVidExtrait.fr.srt')
+
+
+def test_crop_image():
+    from PaddleOCRAnimation.dataset.utilis.disturb import crop_image
+    vid, ctx, r = initialise_video()
+    im = vid.extract_frame_as_pil(8)
+    events = vid.get_subtitle_boxes(timestamp=8, context=ctx, renderer=r, piste=0)
+
+    l = len(events)
+
+    im, events = crop_image(image= im, event_list=events)
+
+    assert len(events) != l, "The crop should remove some events"
+
+def test_add_black_band():
+    from PaddleOCRAnimation.dataset.utilis.disturb import add_black_band
+    vid, ctx, r = initialise_video()
+    im = vid.extract_frame_as_pil(8)
+    events = vid.get_subtitle_boxes(timestamp=8, context=ctx, renderer=r, piste=0)
+
+    w, h = im.size
+
+    im, events = add_black_band(img= im, event_list=events, p=1)
+    assert w != im.size[0], "The add should increse the size"

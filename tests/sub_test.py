@@ -27,6 +27,14 @@ def test_doc_event_precis():
     assert doc.nb_event_dans_frame(frame=timedelta(seconds=20)) ==1, "only one event should be in the copy"
     assert doc.nb_event_dans_frame(frame=timedelta(seconds=4)) == 0, "there should not be any event there after nb_event_dans_frame"
 
+def test_copy():
+    doc = DocumentPlus.parse_file_plus(sub)
+    assert len(doc.events)==26
+
+    copy = doc.copy(timing=9)
+
+    assert len(copy.events) ==4
+
 def test_event_to_pil():
     doc = DocumentPlus.parse_file_plus(sub)
     results = doc.event_to_pil(

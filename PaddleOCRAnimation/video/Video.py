@@ -1,34 +1,25 @@
-from os.path import exists, dirname, abspath, join, relpath, splitext, basename, isabs
+from os.path import exists, dirname, abspath, join, relpath, basename
 from shutil import which, copy
-from typing import TypedDict, Optional, Union, overload, Literal
 import subprocess
 from json import loads
-from PIL import Image, ImageFilter, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 from datetime import timedelta
 from os import makedirs, chdir, getcwd, listdir
 from warnings import warn
 from .sub import RendererClean
 from .sub.DocumentPlus import DocumentPlus
-from ass import line, data, Dialogue
+from ass import Dialogue
 from copy import deepcopy
 import random
-import matplotlib.font_manager as fm
-from numpy import clip
-from numpy.random import normal
-import numpy as np
-from io import BytesIO
-from dataclasses import dataclass
-from json import dumps
 from platform import system
 from ctypes import cdll
-# from s3fs.core import S3File
 import re
 import importlib.resources
 from pathlib import Path
-from pprint import pformat
 import logging
 from .iso_codes import iso_639_dict
-
+from ..dataset.utilis.disturb import disturb_image, style_transform
+from .classes import eventWithPilList, eventWithPil, FrameToBoxEvent, FrameToBoxResult, SubTrackInfo
 
 logger = logging.getLogger(__name__)
 
@@ -37,473 +28,17 @@ try:
     if system == "Linux":
         cdll.LoadLibrary("libGL.so.1")
 except OSError as e:
-    print(
+    raise ImportError(
         f"{e}\nVous n'avez pas la librairie libGL d'installée veuillez "
         "l'installer en faisant (sur Ubuntu) :\nsudo apt install libgl1"
         )
 else:
     import cv2
 
-
-def style_transform(self: line.Style) -> line.Style:
-    """Applique des transformations aléatoires sur les attributs d'un style de ligne.
-
-    Cette fonction modifie aléatoirement certains paramètres visuels d'un objet `line.Style`
-    pour créer de la diversité graphique :
-        - Changement de police (en évitant les polices problématiques sous Windows)
-        - Perturbation des couleurs (primaire et contour) via une distribution normale
-        - Légère variation de la taille de police
-        - Inversion d'alignement (haut ↔ bas) pour certains cas
-        - Invertion de italique/gras
-
-    Args:
-        self (line.Style): Style de ligne d'origine à transformer.
-
-    Returns:
-        line.Style: Nouveau style modifié de manière aléatoire.
+class NoCorrectSubFound(Exception):
+    """used to indicate that no correct sub has been found in a mkv
     """
-    def change_color(color: data.Color, ecart_type: float = 80) -> data.Color:
-        for col in ['r', 'g', 'b']:
-            setattr(color, col, int(clip(normal(getattr(color, col), ecart_type), 0, 255)))
-        return color
-
-    mauvaises_polices = {  # Les polices qui, sur windows, ne donne pas du texte
-        "Wingdings 2", "Webdings", "Wingdings", "MS Reference Specialty",
-        "MT Extra", "MS Outlook", "Bookshelf Symbol 7", "Segoe MDL2 Assets",
-        "Symbol", "Segoe Fluent Icons", "Wingdings 3"
-    }
-    self = deepcopy(self)
-    if random.random() < 0.25:
-        nom_polices = {
-            fm.FontProperties(fname=font).get_name(): font
-            for font in fm.findSystemFonts(fontpaths=None, fontext='ttf')
-        }
-        nouvelle_police = random.choice(
-            [nom for nom in nom_polices if nom not in mauvaises_polices]
-        )
-        self.fontname = nouvelle_police
-
-    if random.random() < 0.25:
-        self.primary_color = change_color(self.primary_color)
-
-    if random.random() < 0.15:
-        self.outline_color = change_color(self.outline_color)
-
-    if random.random() < 0.2:
-        self.fontsize = normal(self.fontsize, 5)
-
-    mapAlignement = {8: 2, 2: 8}
-    if self.alignment in mapAlignement and random.random() < 0.1:
-        self.alignment = mapAlignement[self.alignment]
-
-    if random.random() < 0.1:
-        self.bold = not self.bold
-
-    if random.random() < 0.15:
-        self.italic = not self.italic
-
-    return self
-
-
-def degrade_image(img: Image.Image) -> Image.Image:
-    """Applique aléatoirement une ou plusieurs dégradations visuelles à une image.
-
-    Cette fonction simule des artefacts réalistes pouvant survenir dans des images du monde réel,
-    tels que le flou, le bruit, la compression JPEG, et le bruit "sel et poivre".
-
-    Les effets sont appliqués avec des probabilités différentes :
-        - Flou gaussien : 30%
-        - Bruit gaussien : 15%
-        - Compression JPEG : 20%
-        - Sel et poivre : 10%
-
-    Args:
-        img (Image.Image): Image d'entrée (PIL), au format RGB ou RGBA.
-
-    Returns:
-        Image.Image: Nouvelle image dégradée, au même format (RGBA si l'entrée l'était).
-    """
-    def add_noise(img, mean=0, std=10):
-        """Rajoute du bruit (grain) sur l'image
-        """
-        np_img = np.array(img).astype(np.float32)
-        noise = np.random.normal(mean, std, np_img.shape)
-        noisy_img = np_img + noise
-        noisy_img = np.clip(noisy_img, 0, 255).astype(np.uint8)  # Pour rester entre 0 et 255
-        img = Image.fromarray(noisy_img)
-        return img.convert('RGBA') if img.mode == 'RGBA' else img
-
-    def jpeg_compress(img: Image.Image, quality=10):
-        """Sauvegarde sur RAM en JPEG (avec compression) et réouvre cette sauvegarde
-        """
-        baseMode = img.mode
-        if baseMode == 'RGBA':
-            img = img.convert('RGB')
-        buffer = BytesIO()  # Sauvegarde en RAM et non sur le disque
-        img.save(buffer, format="JPEG", quality=quality)
-        buffer.seek(0)
-        return Image.open(buffer).convert('RGBA') if baseMode == 'RGBA' else Image.open(buffer)
-
-    def salt_and_pepper(img, amount=0.003):
-        """Rajoute des points blancs et noirs sur l'image
-        """
-        np_img = np.array(img)
-        num_salt = np.ceil(amount * np_img.size * 0.5)
-        num_pepper = np.ceil(amount * np_img.size * 0.5)
-
-        # Salt
-        coords = [np.random.randint(0, i - 1, int(num_salt)) for i in np_img.shape]
-        np_img[tuple(coords)] = 255
-
-        # Pepper
-        coords = [np.random.randint(0, i - 1, int(num_pepper)) for i in np_img.shape]
-        np_img[tuple(coords)] = 0
-        img = Image.fromarray(np_img)
-        return img.convert('RGBA') if img.mode == 'RGBA' else img
-
-    if random.random() < 0.30:
-        img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 2)))
-    if random.random() < 0.15:
-        img = add_noise(img, std=random.uniform(2, 12))
-    if random.random() < 0.20:
-        img = jpeg_compress(img, quality=random.randint(15, 36))
-    if random.random() < 0.1:
-        img = salt_and_pepper(img).convert('RGBA') if img.mode == 'RGBA' else salt_and_pepper(img)
-    return img
-
-
-class SubTrackInfo(TypedDict):
-    """
-    Représente les métadonnées d'une piste de sous-titres extraite d'un fichier MKV.
-
-    Ce dictionnaire est généré par la fonction `recup_infos_MKV`, qui s'appuie sur
-    `ffprobe` pour détecter les flux de type "subtitle" présents dans un conteneur MKV.
-
-    Attributes:
-        index (int) : Index brut de la piste tel que retourné par ffprobe (utilisé par ffmpeg).
-
-        id_sub (int) : Identifiant relatif de la piste de sous-titres, réinitialisé à 0 pour la
-            première piste détectée, 1 pour la deuxième, etc. Sert à référencer les
-            pistes dans le reste du code (par exemple pour l'affichage).
-
-        langage (str) : Langue déclarée de la piste (ex. "eng", "fre", etc.),
-            ou "inconnu" si absente.
-
-        title (str) : Titre descriptif éventuel de la piste (ex. "Forcés", "SDH", etc.),
-            ou "non nommé" si non spécifié dans les métadonnées.
-
-        codec (Optional[str]) : Nom du codec utilisé pour la piste de sous-titres
-            (ex "ass", "srt", "subrip").
-            Peut être `None` si l'information est manquante ou inaccessible.
-
-        nb_frames (Union[str, int]) : Nombre de sous-titres (ou d'événements) estimés dans
-            cette piste.
-            Cette information est issue des métadonnées (tag `NUMBER_OF_FRAMES`) et peut
-            parfois être une chaîne de caractères ou absente.
-
-        fps (float) : Fréquence estimée des sous-titres (nombre de sous-titres par seconde),
-            calculée comme `nb_frames / durée`. La fiabilité dépend de la disponibilité
-            de ces deux informations.
-
-        is_extarnal (bool) : Si le sous titre est dans le MKV ou juste dans le même dossier
-    """
-    index: int
-    id_sub: int
-    langage: str
-    title: str
-    codec: Optional[str]
-    nb_frames: Union[str, int]
-    fps: float
-    is_extarnal: bool
-
-
-class MKVInfo(TypedDict):
-    durée: float
-    sous_titres: list[SubTrackInfo]
-
-
-@dataclass
-class FrameToBoxEvent:
-    Event: line.Dialogue
-    Boxes: RendererClean.Box
-
-    def to_transcription(self):
-        text = re.sub(r'\{[^}]*\}', '', self.Event.text)
-
-        return {
-            'transcription': text,
-            'points': self.Boxes.full_box
-        }
-
-
-@dataclass
-class FrameToBoxResult:
-    ImagePath: str
-    Events: list[FrameToBoxEvent]
-
-    def to_dect_dataset(self) -> str:
-        event_textes = [
-            dumps(event.to_transcription(), ensure_ascii=False) for event in self.Events
-        ]
-        chemin_normalise = self.ImagePath.replace("\\", "/")
-        return f"{chemin_normalise}   [{', '.join(event_textes)}]"
-    
-    def to_rec_dataset(self, dataset_path: str | None = None, image_save_path: str | None = None) -> str:
-        """
-        Génère un dataset de reconnaissance de texte à partir des zones détectées dans l'image,
-        en enregistrant chaque zone recadrée comme une image et en produisant un texte listant
-        le chemin de chaque crop et son texte associé.
-
-        Args:
-            dataset_path (str | None, optional): Chemin vers la racine du dataset. Utilisé pour
-                résoudre les chemins relatifs et produire des chemins relatifs dans le fichier texte.
-                Si None, les chemins relatifs sont interprétés depuis le répertoire courant.
-            image_save_path (str | None, optional): Dossier où sauvegarder les images recadrées.
-                Si None, les crops sont enregistrés dans un sous-dossier du dataset ou à côté de l'image.
-
-        Returns:
-            str: Contenu formaté du dataset texte, avec une ligne par crop sous la forme
-                "<chemin_image>\t<texte>".
-        """
-        def normalize_box(box: RendererClean.Box) -> tuple[int, int, int, int]:
-            full = box.full_box
-            left = min(p[0] for p in full)
-            top = min(p[1] for p in full)
-            right = max(p[0] for p in full)
-            bottom = max(p[1] for p in full)
-            return (left, top, right, bottom)
-
-        if isabs(self.ImagePath):
-            base_image_path = self.ImagePath
-        else:
-            if dataset_path is not None:
-                base_image_path = join(dataset_path, self.ImagePath)
-            else:
-                base_image_path = self.ImagePath
-
-        if not exists(base_image_path):
-            raise FileNotFoundError(f"L'image n'existe pas : {abspath(base_image_path)}")
-
-        base_img = Image.open(base_image_path)
-
-        if image_save_path is None:
-            if dataset_path is None:
-                save_dir = dirname(base_image_path)
-            else:
-                save_dir = join(dataset_path, "images")
-        else:
-            save_dir = image_save_path
-
-        return_texte = ""
-        for i, event in enumerate(self.Events):
-            crop_box = normalize_box(event.Boxes)
-            crop = base_img.crop(crop_box)
-
-            save_name = f"{splitext(basename(base_image_path))[0]}_{i}.png"
-            final_crop_path = join(save_dir, save_name)
-
-            makedirs(dirname(final_crop_path), exist_ok=True)
-            crop.save(final_crop_path)
-
-            if dataset_path:
-                rel_crop_path = relpath(final_crop_path, dataset_path)
-            else:
-                rel_crop_path = final_crop_path
-
-            clean_text = re.sub(r'\{[^}]*\}', '', event.Event.text)
-
-            return_texte += f"{rel_crop_path}\t{clean_text}\n"
-
-        return return_texte
-
-@dataclass
-class eventWithPil:
-    image: Image.Image
-    events: list[FrameToBoxEvent]
-
-    def to_pil(self, show_boxes: bool = True)-> Image.Image:
-        """
-        Converts the current event (subtitle) and its bounding boxes into a composite PIL image.
-
-        Args:
-            show_boxes (bool, optional): If True, overlays the subtitle bounding boxes on the image.
-                                        Defaults to True.
-
-        Returns:
-            Image.Image: The rendered image with optional subtitle box overlays.
-        """
-        size = self.image.size
-        base=self.image
-        if not show_boxes:
-            return base
-        for event in self.events:
-            event_pil = event.Boxes.to_pil(size)
-            base = Image.alpha_composite(base, event_pil)
-        return base
-    
-    def add_padding(self, padding: tuple[int, int, int, int]):
-        """Add or remove transparent padding around the subtitle image and update event bounding boxes.
-
-        This method adjusts the current RGBA subtitle image by adding or removing padding 
-        on each side, and updates all associated event bounding boxes accordingly.
-
-        The padding is defined as (left, top, right, bottom):
-        - Positive values add transparent space around the image.
-        - Negative values crop the image, removing pixels from the corresponding sides.
-
-        When cropping occurs, any subtitle event (i.e., a line from an ASS or SRT file) 
-        whose bounding box falls completely outside the visible image area is removed. 
-        Events partially affected by cropping are clamped so that their coordinates remain 
-        within the new image boundaries.
-
-        Args:
-            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom). 
-                Positive values expand the image, negative values crop it.
-
-        Raises:
-            ValueError: 
-                - If `padding` is not a tuple of four integers.
-                - If the requested negative padding would crop more than the image size.
-        """
-        if (
-            not isinstance(padding, tuple) 
-            or not all([isinstance(a, int) for a in padding]) 
-            or not len(padding)==4
-        ):
-            raise ValueError(f'padding should be a tuple with 4 int, here {padding}')
-        previous_w, previous_h = self.image.size
-        if (min(padding[0],0)+min(padding[2],0)+previous_w < 0) or (min(padding[1],0)+min(padding[3],0)+previous_h < 0):
-            raise ValueError("Cannot crop more than the size of the image")
-
-        if any([a < 0 for a in padding]):
-            self.image=self.image.crop((-min(0,padding[0]), -min(0, padding[1]), previous_w+min(0, padding[2]), previous_h+min(0, padding[3])))
-            previous_w, previous_h = self.image.size
-        
-        new_image = Image.new(
-            mode="RGBA",
-            size=(
-                previous_w+max(padding[0],0)+max(padding[2],0),
-                previous_h+max(padding[1],0)+max(padding[3],0)
-            ),
-            color=(0, 0, 0, 0)
-        )
-        new_image.paste(self.image, (max(padding[0],0), max(padding[1],0)), self.image)
-        self.image = new_image
-
-        newevents = []
-        for event in self.events:
-            event.Boxes.add_padding(padding=padding)
-            if (padding[2]<0): 
-                # the bow doesnt know the image size so it needs to be done here
-                event.Boxes.bas_droit[0] = min(event.Boxes.bas_droit[0], new_image.size[0])
-                event.Boxes.haut_droit[0] = event.Boxes.bas_droit[0]
-                if event.Boxes.bas_droit[0] < event.Boxes.bas_gauche[0]:
-                     event.Boxes.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
-            if (padding[3]<0):
-                event.Boxes.bas_droit[1] = min(event.Boxes.bas_droit[1], new_image.size[1])
-                event.Boxes.bas_gauche[1] = event.Boxes.bas_droit[1]
-                if event.Boxes.bas_droit[1] < event.Boxes.haut_droit[1]:
-                    event.Boxes.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
-
-            if event.Boxes.full_box != [[0, 0], [0, 0], [0, 0], [0, 0]]:
-                newevents.append(event)
-        self.events = newevents
-            
-            
-
-
-
-class eventWithPilList(list[eventWithPil]):
-    """
-    A specialized list of `eventWithPil` objects with convenient visualization and compositing methods.
-
-    Each element in this list contains:
-        - `image`: a PIL Image representing a frame.
-        - `events`: a list of `FrameToBoxEvent` objects, each with text and bounding box information.
-
-    Representation:
-        The `__repr__` method returns a nested dictionary-like string for readability, showing:
-            - The index of each `eventWithPil` in the list.
-            - The size of its PIL image.
-            - The text and bounding box of each event.
-        Note: This is purely for human-readable output and does NOT reflect the actual internal structure,
-              which remains a list of `eventWithPil` objects.
-
-    Example:
-        {
-          '0': { '0': { 'Box': '[[881, 49], [1046, 49], [1046, 110], [881, 110]]',
-                         'Text': '{\\an2\\pos(966.4,103.1)\\fnIwata Mincho Old Pro-Fate B\\fs50\\blur0.9}Preview'},
-                 'PilImage Size': (1920, 1080)},
-          '1': { '0': { 'Box': '[[984, 274], [1612, 274], [1612, 345], [984, 345]]',
-                         'Text': '{\\an2\\pos(1298.67,336)\\fnIwata Mincho Old Pro-Fate B\\fs60\\c&HFF4DD5&\\blur0.9}Dis-nous au moins ton nom !'},
-                 'PilImage Size': (1920, 1080)},
-          ...
-        }
-    """
-    def __repr__(self) -> str:
-        return_str = {}
-        for i, event in enumerate(self):
-            event_dict = {"PilImage Size": event.image.size}
-            for j, line in enumerate(event.events):
-                event_dict[str(j)]= {"Text":line.Event.text, 'Box':str(line.Boxes.full_box)}
-            return_str[str(i)] = event_dict
-        return pformat(return_str, indent=2, width=100)
-
-    def to_pil(self, show_boxes: bool = True) -> Image.Image:
-        """
-        Composites all images in the list into a single PIL image, optionally overlaying bounding boxes for each event.
-
-        Args:
-            show_boxes (bool, optional): Whether to overlay bounding boxes of events on the resulting image.
-                                         Defaults to True.
-
-        Raises:
-            ValueError: If the images in the list do not all have the same size. The object was propably created without giving a size.
-
-        Returns:
-            Image.Image: A single PIL Image representing the composited frames with optional bounding boxes.
-        """
-        size = self[0].image.size
-        base = Image.new(mode="RGBA", size=size)
-        for event in self:
-            if size != event.image.size:
-                raise ValueError('The sizes of the images do not match, the list was most likely made without the size attribute')
-            size = event.image.size
-
-            base = Image.alpha_composite(base, event.image)
-            if show_boxes:
-                for line in event.events:
-                    base = Image.alpha_composite(base, line.Boxes.to_pil(size))
-
-        return base
-    def add_padding(self, padding: tuple[int, int, int, int]):
-        """Apply padding to all subtitle events in the list.
-
-        This method iterates over each `eventWithPil` in the list and applies the 
-        specified padding using each event's `add_padding` method. Positive padding 
-        expands the image around each event, while negative padding crops it. 
-        Any events that become fully outside their image after cropping are automatically 
-        removed by the event-level method.
-
-        Args:
-            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom).
-                Positive values add transparent space, negative values crop the image.
-
-        Raises:
-            ValueError: 
-                - If `padding` is not a tuple of four integers.
-                - If any of the individual event's padding operations would crop more than 
-                  its image size (handled by the event's own `add_padding` method).
-        """
-        if (
-            not isinstance(padding, tuple) 
-            or not all([isinstance(a, int) for a in padding]) 
-            or not len(padding)==4
-        ):
-            raise ValueError(f'padding should be a tuple with 4 int, here {padding}')
-        
-        for event in self:
-            event.add_padding(padding=padding)
+    pass
 
 
 class Video:
@@ -907,8 +442,9 @@ class Video:
             base = Image.alpha_composite(base, image.to_pil(SIZE))
         return base
     
-    def get_subtitle_boxes(self,  timestamp: float | timedelta, SIZE: tuple[int, int], renderer: RendererClean.Renderer,
+    def get_subtitle_boxes(self,  timestamp: float | timedelta, renderer: RendererClean.Renderer,
         context: RendererClean.Context, piste: int,
+        SIZE: tuple[int, int] | None = None,
         transform_sub: bool = False, multiline: bool = False,
         padding: tuple[int, int, int, int] = (7, 10, 0, 0)
         )-> eventWithPilList:
@@ -922,7 +458,7 @@ class Video:
 
         Args:
             timestamp (float | timedelta): Instant de la vidéo pour lequel extraire les sous-titres.
-            SIZE (tuple[int, int]): Taille de l'image (largeur, hauteur).
+            SIZE (tuple[int, int]): Taille de l'image (largeur, hauteur), si `None`, prend la taille de la vidéo, si `(0, 0)` les pil sont les petites images.
             renderer (RendererClean.Renderer): Objet de rendu libass.
             context (RendererClean.Context): Contexte de rendu libass.
             piste (int): Index de la piste de sous-titres à utiliser.
@@ -960,6 +496,8 @@ class Video:
             return sorted(boxes, key=position_cle)
         if isinstance(timestamp, float) or isinstance(timestamp, int):
             timestamp = timedelta(seconds=timestamp)
+        if SIZE is None:
+            SIZE = self.taille
         doc = self.docs[piste]
         nb_event_in_frame, events_in_frame = doc.nb_event_dans_frame(timestamp, returnEvents=True)
 
@@ -1118,7 +656,7 @@ class Video:
 
         makedirs(dirname(abspath(SortieImage)), exist_ok=True)
         if transform_image:
-            base = degrade_image(base)
+            base = disturb_image(base)
         if save_image:
             base.save(abspath(SortieImage))
 
@@ -1180,9 +718,39 @@ class Video:
             episode.docs = docs
         return episode
     
+    def copy(
+            self, timing: float | None = None, 
+            doc_id: int | list[int] | None = None
+        ):
+        if timing is None: 
+            return deepcopy(self)
+        
+        if doc_id is None:
+            doc_id = list(self.docs.keys())
+        if isinstance(doc_id, int):
+            doc_id= [doc_id]
+        if not doc_id:
+            raise ValueError(f"doc_id is empty")
+        
+        copy = Video(
+            path=self.path,
+            taille=self.taille,
+            duree=self.duree,
+            sous_titres=self.sous_titres.copy()
+        )
+        copy.attachement_path = self.attachement_path
+        
+        for doc in doc_id:
+            if doc not in self.docs.keys():
+                raise ValueError(f'The doc {doc} is not present in the vid docs')
+            copy.docs[doc] = self.docs[doc].copy(timing=timing)
+        
+        return copy
+
+    
     def choose_sub_track(self, langage: str = 'fre',
                   forbidden_words: list[str] | None = None
-                  ) -> tuple[int | None, str | None]:
+                  ) -> tuple[int, str]:
         """
         Randomly selects the most suitable subtitle track for a given language.
 
@@ -1238,5 +806,5 @@ class Video:
             # Malgré les filtrages on a plus de une piste, on choisis au hasard
             return choisir_pondere(encore_mieux)
 
-        return None, None
+        raise NoCorrectSubFound(f"Cant find a sub of language {langage} in {self.path}")
 

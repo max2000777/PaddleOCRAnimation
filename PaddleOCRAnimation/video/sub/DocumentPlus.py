@@ -1,14 +1,17 @@
 import ass
 from datetime import timedelta
-from typing import Union
+from typing import Union, overload, Literal
 from _io import TextIOWrapper
 from . import RendererClean
 from .RendererClean import Event
 from os.path import exists, abspath
+from copy import deepcopy
 from pathlib import Path
 from .DocumentSrt import srt_to_ass_lines, parse_str_file
 
 def split_dialogue(dialogue:ass.line.Dialogue) -> list[ass.line.Dialogue]:
+    """split event beacause some OCR apps require singleline event.
+    """
     from copy import deepcopy
     text = dialogue.text.replace(r"\N", r'\n')
     lines = text.split(r'\n')
@@ -31,7 +34,7 @@ class DocumentPlus(ass.Document):
       - Parser un fichier ASS avec tri automatique des événements.
     """
     @property
-    def styles(self):
+    def styles(self) -> ass.section.StylesSection:
         """Permet d'avoir la rétrocompatibilitée avec les vieux fichiers ass"""
         # Priorité à V4+ Styles si présent et non vide, sinon V4 Styles
         styles_ass = self.sections.get(self.STYLE_ASS_HEADER)
@@ -59,7 +62,14 @@ class DocumentPlus(ass.Document):
             self.events._lines.sort(key=lambda e: getattr(e, key), reverse=reverse)
 
         return self
-
+    @overload
+    def nb_event_dans_frame(self, frame: timedelta, returnEvents: Literal[False] = False
+                            ) -> int:
+        ...
+    @overload
+    def nb_event_dans_frame(self, frame: timedelta, returnEvents: Literal[True]
+                            ) -> tuple[int, ass.section.EventsSection]:
+        ...
     def nb_event_dans_frame(self, frame: timedelta, returnEvents: bool = False
                             ) -> Union[int, tuple[int, ass.section.EventsSection]]:
         """
@@ -94,6 +104,40 @@ class DocumentPlus(ass.Document):
         if returnEvents:
             return nb, Events
         return nb
+    
+    def copy(self, timing:float | timedelta | None = None)-> 'DocumentPlus':
+        """
+        Create a copy of the current DocumentPlus instance.
+
+        If `timing` is not provided, all events are copied.  
+        If `timing` is provided, only events active at that specific time are copied.
+
+        Args:
+            timing (float | timedelta | None, optional): A time in seconds to filter events. Defaults to None.
+
+        Returns:
+            DocumentPlus: A new DocumentPlus instance with copied info, styles, and filtered events.
+        """
+        copy = DocumentPlus()
+        copy.info.set_data(deepcopy(self.info))
+        copy.styles.set_data(deepcopy(self.styles))
+
+        if timing is None: 
+            copy.events.set_data(deepcopy(self.events))
+            return copy
+        elif isinstance(timing, float) or isinstance(timing, int):
+            timing= timedelta(seconds=timing)
+        
+        found_events= []
+        for event in self.events:
+            if event.start <= timing <= event.end:
+                found_events.append(event)
+            elif event.end > timing:
+                # we assume that the document IS SORTED
+                break
+        copy.events.set_data(deepcopy(found_events))
+        return copy
+
 
     def doc_event_precis(self, frame: timedelta, event_id: int = 0) -> 'DocumentPlus':
         """
@@ -125,7 +169,7 @@ class DocumentPlus(ass.Document):
             elif event.start > frame:
                 break
 
-        if i == -1:
+        if i == -1 or not event_precis:
             raise ValueError("La frame n'a aucun event")
         elif i != event_id:
             raise ValueError(
