@@ -346,8 +346,11 @@ class dataset_image:
     image_path: str
     event_list: list[FrameToBoxEvent]
 
-    def to_paddleOCR(self, path: str | Path,
-                     remove_overrides: bool = True):
+    def to_paddleOCR(
+            self, path: str | Path,
+            remove_overrides: bool = True,
+            prevent_karaoke: bool = True,
+        ) -> None:
         """Append this entry to a PaddleOCR-compatible .txt dataset file.
         
         Each line has the format:
@@ -363,9 +366,13 @@ class dataset_image:
             if event.Boxes.full_box == [[0, 0], [0, 0], [0, 0], [0, 0]]:
                 continue
 
-            text = event.Event.text
+            text: str = event.Event.text
             if remove_overrides:
+                l_text = len(text)
                 text = re.sub(r'\{[=\\][^}]*\}', '', text)
+                if prevent_karaoke and l_text > 15 and len(text) < 3:
+                    # karaoke a often 99% overrides and 1 or 2 real letters
+                    continue
             dict_list.append({"transcription": text, "points": event.Boxes.full_box})
         
         with open(path, mode='a', encoding='utf-8') as f:
