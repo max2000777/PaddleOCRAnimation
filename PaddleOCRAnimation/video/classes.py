@@ -358,7 +358,7 @@ class dataset_image:
 
         Args:
             path (str | Path): Path to the output .txt file.
-            remove_overrides (bool): if `True` will remove overrides in the text (ex: `{\i1}`)
+            remove_overrides (bool): if `True` will remove overrides in the text (ex: `{\\i1}`)
         """
 
         dict_list = []
@@ -387,7 +387,7 @@ class dataset_image:
         Args:
             path (str | Path | None, optional): Output file path. Defaults to './dataset.txt'.
             format (Literal['PaddleOCR'], optional): Output format. Currently only 'PaddleOCR' is supported.
-            remove_overrides (bool): if `True` will remove overrides in the text (ex: `{\i1}`)
+            remove_overrides (bool): if `True` will remove overrides in the text (ex: `{\\i1}`)
 
         Raises:
             ValueError: If the output file is not a .txt or if the format is unsupported.
