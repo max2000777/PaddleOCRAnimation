@@ -2,7 +2,7 @@ import json
 from os.path import exists, join, abspath, dirname, basename, splitext
 from random import shuffle
 from PIL import Image as PILImage
-from .RendererClean import Box
+from ..video.sub.RendererClean import Box
 from os import makedirs
 from tqdm.auto import tqdm
 
@@ -212,7 +212,7 @@ class detDataset(paddleDataset):
 
             for i, annotation in enumerate(image.get('annotations', [])):
                 def normalize_box(
-                        box: list[list[int, int], list[int, int], list[int, int], list[int, int]]
+                        box: list[list[int]]
                     ) -> tuple[int, int, int, int]:
                     left = min(p[0] for p in box)
                     top = min(p[1] for p in box)
