@@ -234,6 +234,8 @@ class Video:
         frame_rgb = cv2.cvtColor(timestampo, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(frame_rgb, mode='RGB').convert("RGBA")
 
+        del cap, ret, timestampo
+
         return pil_image
 
     def dumpAtachement(self, dossier: str):
