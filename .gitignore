@@ -27,7 +27,7 @@ libass-0.17.4/
 tests/tmp/
 dev/
 create_ocr_dataset.log
-dataset/
+/dataset/
 
 #WSL
 *Zone.Identifier
