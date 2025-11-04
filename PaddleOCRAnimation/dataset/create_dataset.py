@@ -222,7 +222,8 @@ def create_ocr_dataset(
 
     logging.basicConfig(
         filename='create_ocr_dataset.log', level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        encoding='utf-8'
     )
 
     mkv_files = list(Path(main_mkv_path).rglob("*.mkv"))
@@ -270,7 +271,7 @@ def create_ocr_dataset(
                            dataset_text_path=os.path.join(dataset_path, 'dataset.txt'),
                            start_time=start_time)
     
-    logger.info(f"Process done, {n_text_image} images with text, {n_no_text_image} images without")
+    logger.info(f"Process done, {n_text_image} images with text, {n_no_text_image} images without.")
     print(n_text_image, n_no_text_image)
 
 if __name__ == '__main__':

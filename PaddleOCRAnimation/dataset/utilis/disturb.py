@@ -280,7 +280,7 @@ def style_transform(style: line.Style) -> line.Style:
         "Symbol", "Segoe Fluent Icons", "Wingdings 3"
     }
     style = deepcopy(style)
-    if random.random() < 0.25:
+    if random.random() < 0.30:
         nom_polices = {
             fm.FontProperties(fname=font).get_name(): font
             for font in fm.findSystemFonts(fontpaths=None, fontext='ttf')

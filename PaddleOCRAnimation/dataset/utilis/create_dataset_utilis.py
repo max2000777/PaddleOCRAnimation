@@ -369,8 +369,11 @@ def video_to_dataset(
         raise FileNotFoundError(f'video {video_path.absolute()} was not found')
     if not str(video_path).endswith('.mkv'):
         raise ValueError(f'{video_path} is not a mkv file')
-    
-    vid = Video.make_video(video_path)
+    try:
+        vid = Video.make_video(video_path)
+    except RuntimeError:
+        logger.error(f"Error opening video {os.path.basename(video_path)}, this video will be skipped.")
+        return 0, 0
     try:
         selected_sub_id, selected_sub_name =choose_and_extract_sub(vid=vid, main_path=root_mkv_path,
                             extracted_sub_path=extracted_sub_path, 
@@ -416,7 +419,7 @@ def video_to_dataset(
                 del image
             del timing_results
         except Exception as e:
-            logger.error(f'Error during result opening {e}')
+            logger.error(f'{Path(video_path).stem} : Error during result opening {e}')
     
     after_video_to_dataset_cleanup(
         vid=vid,

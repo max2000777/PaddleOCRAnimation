@@ -263,7 +263,7 @@ class Video:
                 "-f", 'null',
                 'null'  # https://superuser.com/a/1828612
             ]
-        resultat = subprocess.run(commande, capture_output=True, text=True)
+        resultat = subprocess.run(commande, capture_output=True, text=True, encoding='utf-8')
         if resultat.returncode != 0:
             print(
                 "Erreur lors de l'extraction des attachments avec ffmpeg :"
@@ -350,7 +350,7 @@ class Video:
                 "-y",
                 sortie.replace('\\', '/')
             ]
-            resultat = subprocess.run(commande, capture_output=True, text=True)
+            resultat = subprocess.run(commande, capture_output=True, text=True, encoding="utf-8")
 
             if resultat.returncode != 0:
                 print(f'{" ".join(commande)} \n{resultat.stderr}')

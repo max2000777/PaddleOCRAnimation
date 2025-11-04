@@ -190,7 +190,7 @@ def vobsubpng_to_dataset(
 
         sub_image = Image.open(sub_image_path)
         if sub['size'][0] != sub_image.size[0] or sub['size'][1] != sub_image.size[1]:
-            logger.warning(f'The size of the sub n{i} in the index ({sub['size']}) is not the same as the real size ({sub_image.size})')
+            logger.warning(f"The size of the sub n{i} in the index ({sub['size']}) is not the same as the real size ({sub_image.size})")
         
         # Here we need to find the event corresponding to the image
         # the index is not always a good indicator beacause events are sorted by time

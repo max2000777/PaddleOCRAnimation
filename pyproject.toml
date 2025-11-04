@@ -14,7 +14,8 @@ dependencies = ["opencv-python",
                 "ass",
                 "Pillow",
                 "matplotlib",
-                "numpy"
+                "numpy",
+                "tqdm"
                 ]
 
 [tool.setuptools]
