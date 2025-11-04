@@ -539,8 +539,10 @@ class Video:
                     resultats_libass.to_singleline_boxes(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
                 )
                 if len(events_list) != len(boxes_list):
+                    vid_name = basename(self.path)
                     raise ValueError(
-                        f"there should be the same number of line than the number of boxes (here {len(events_list)} lines and {len(boxes_list)} boxes"
+                        f"'{vid_name}', {timestamp} : there should be the same number of line than the number of boxes (here {len(events_list)} lines and {len(boxes_list)} boxes). "
+                        "This is most likely due to libass automatic line break when the text is too long"
                     )
                 for i in range(len(events_list)):
                     dict_event = {
