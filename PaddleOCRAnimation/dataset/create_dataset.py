@@ -36,7 +36,7 @@ def path_check(
             Root directory for the dataset. Defaults to `./dataset` if not specified.
         image_save_path (str | Path | None, optional):
             Directory where generated images (with or without subtitles) will be stored.
-            Defaults to `<dataset_path>/images`.
+            Defaults to `<dataset_path>/det_images`.
         no_text_image_save_path (str | Path | None, optional):
             Directory for images without subtitles (background-only).
             Automatically derived from `image_save_path` if not specified.
@@ -77,7 +77,7 @@ def path_check(
     else:
         dataset_path = Path(dataset_path)
 
-    images_root = Path(image_save_path) if image_save_path else dataset_path / "images"
+    images_root = Path(image_save_path) if image_save_path else dataset_path / "det_images"
 
     if separate_text_and_no_text_images:
         image_save_path = images_root / "text"
