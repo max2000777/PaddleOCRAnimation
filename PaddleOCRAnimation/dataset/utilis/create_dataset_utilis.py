@@ -209,7 +209,7 @@ def timing_to_dataset(
         for i, style in enumerate(vid.docs[selected_sub_id].styles):
             if style.name == 'Default':
                 vid.docs[selected_sub_id].styles[i] = style_transform(style=style)
-        vid.docs[selected_sub_id].events = disturb_text()
+        vid.docs[selected_sub_id].events = disturb_text(event_list=vid.docs[selected_sub_id].events, timestamp=timing_sec)
     
     events_with_pil = vid.get_subtitle_boxes(timestamp=timing_sec, renderer=r, context=ctx, piste=selected_sub_id, multiline = multiline)
 
@@ -222,7 +222,7 @@ def timing_to_dataset(
     background, events_with_pil = disturb_image(background, events_with_pil) # disturb image after composite to try to disturb subs too
 
     # crop can remove all events in the frame
-    image_name = os.path.join(image_save_path if len(return_event_list)>0 else no_text_image_save_path,f'{vid_name}_s{selected_sub_id}_t{timing_sec}.png')
+    image_name = os.path.join(image_save_path if len(events_with_pil)>0 else no_text_image_save_path,f'{vid_name}_s{selected_sub_id}_t{timing_sec}.png')
     background.save(image_name)
 
     return_dataset_image_list = [

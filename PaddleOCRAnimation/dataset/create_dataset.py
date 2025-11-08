@@ -112,7 +112,8 @@ def create_ocr_dataset(
         preferd_sub_language: str = 'fre', 
         attachement_path: str | Path | None = None,
         multiline: bool = False,
-        p_timing: float = 0.005
+        p_timing: float = 0.005,
+        logging_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] = 'INFO',
     ) -> None:
     """
     Automatically generates a complete OCR training dataset from a collection of MKV videos.
@@ -164,6 +165,8 @@ def create_ocr_dataset(
             Probability parameter controlling the number of selected timings over one
             video duration. Roughly corresponds to a sampling ratio.
             Defaults to `0.005`.
+        logging_level (Literal, optional):
+            The logging level of the log file. By default `INFO`.
 
     Workflow:
         1. **Directory setup:** Uses `path_check()` to validate and/or create all
@@ -221,7 +224,7 @@ def create_ocr_dataset(
     )
 
     logging.basicConfig(
-        filename='create_ocr_dataset.log', level=logging.INFO,
+        filename='create_ocr_dataset.log', level=logging_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         encoding='utf-8'
     )

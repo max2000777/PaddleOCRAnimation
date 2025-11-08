@@ -9,6 +9,9 @@ from copy import deepcopy
 import matplotlib.font_manager as fm
 from datetime import timedelta
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def disturb_eventWithPil(events: eventWithPil, p:float = 0.15,
@@ -349,14 +352,15 @@ def disturb_text(
                 event.text = text
 
             
-            if random.random() < p_three_dots_after and not text.endswith(("...", "…", "!", "?")):
+            if random.random() < p_three_dots_after and not text.endswith(("...", "…", "!", "?", ",")):
                 if text.endswith('.'):
                     text = text+'..'
                     event.text = text
                 else:
                     text = text+'...'
+                    logger.debug(f'Added three dots to text, new text : {text}')
                     event.text = text
-            elif random.random() < p_point_after and not text.endswith(("...", "…", "!", "?", '.')):
+            elif random.random() < p_point_after and not text.endswith(("...", "…", "!", "?", '.', ",")):
                 text = text+'.'
                 event.text = text
         return event 
