@@ -231,7 +231,8 @@ class detDataset(paddleDataset):
                 ) if foldername is not None else f"{splitext(basename(image['image_path']))[0]}_{i}{splitext(basename(image['image_path']))[1]}"
 
                 text = annotation['transcription']
-                rec_text_list.append(f"{rel_path}\t{re.sub(r"\{.*?\}", "", text)}")
+                text = re.sub(r'\{.*?\}', '', text)
+                rec_text_list.append(f"{rel_path}\t{text}")
 
                 crop.save(join(dirname(self.path), rel_path))
         if traintestsplit is None:
