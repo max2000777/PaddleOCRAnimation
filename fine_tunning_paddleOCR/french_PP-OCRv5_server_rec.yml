@@ -5,8 +5,8 @@ Global:
   epoch_num: &epoch_num 75
   log_smooth_window: 20
   print_batch_step: 10
-  save_model_dir: ./output/french_PP-OCRv5_server_rec
-  save_epoch_step: 5
+  save_model_dir: ../PaddleOCR_output/french_PP-OCRv5_server_rec
+  save_epoch_step: 20
   eval_batch_step: [0, 2000]
   cal_metric_during_train: true
   calc_epoch_interval: 1
@@ -20,7 +20,7 @@ Global:
   infer_mode: false
   use_space_char: true
   distributed: true
-  save_res_path: ./output/rec/predicts_ppocrv5.txt
+  save_res_path: ../PaddleOCR_output/rec/predicts_ppocrv5.txt
   d2s_train_image_shape: [3, 48, 320]
   uniform_output_enabled: true # pour sauvegarder un fichier json
 
@@ -84,10 +84,10 @@ Train:
   dataset:
     name: MultiScaleDataSet
     ds_width: false
-    data_dir: ../dataset_sub_text_detection/
+    data_dir: ../PaddleOCRAnime/dataset/
     ext_op_transform_idx: 1
     label_file_list:
-    - ../dataset_sub_text_detection/rec_train.txt
+    - ../PaddleOCRAnime/dataset/recTrain.txt
     transforms:
     - DecodeImage:
         img_mode: BGR
@@ -117,9 +117,9 @@ Train:
 Eval:
   dataset:
     name: SimpleDataSet
-    data_dir: ../dataset_sub_text_detection/
+    data_dir: ../PaddleOCRAnime/dataset/
     label_file_list:
-    - ../dataset_sub_text_detection/rec_val.txt
+    - ../PaddleOCRAnime/dataset/recTest.txt
     transforms:
     - DecodeImage:
         img_mode: BGR

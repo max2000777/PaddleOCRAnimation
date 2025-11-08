@@ -5,8 +5,8 @@ Global:
   epoch_num: &epoch_num 75
   log_smooth_window: 20
   print_batch_step: 10
-  save_model_dir: ./output/french_PP-OCRv5_mobile_rec
-  save_epoch_step: 10
+  save_model_dir: ../PaddleOCR_output/french_PP-OCRv5_mobile_rec
+  save_epoch_step: 30
   eval_batch_step: [0, 500]
   cal_metric_during_train: true
   pretrained_model: ../Data/Modèles/latin_PP-OCRv5_mobile_rec_pretrained.pdparams
@@ -84,10 +84,10 @@ Train:
   dataset:
     name: MultiScaleDataSet
     ds_width: false
-    data_dir: ../dataset_sub_text_detection/
+    data_dir: ../PaddleOCRAnime/dataset/
     ext_op_transform_idx: 1
     label_file_list:
-    - ../dataset_sub_text_detection/rec_train.txt
+    - ../PaddleOCRAnime/dataset/recTrain.txt
     transforms:
     - DecodeImage:
         img_mode: BGR
@@ -111,7 +111,7 @@ Train:
   sampler:
     name: MultiScaleSampler
     scales: [[320, 32], [320, 48], [320, 64]]
-    first_bs: &bs 128
+    first_bs: &bs 75
     fix_bs: false
     divided_factor: [8, 16] # w, h
     is_training: True
@@ -123,9 +123,9 @@ Train:
 Eval:
   dataset:
     name: SimpleDataSet
-    data_dir: ../dataset_sub_text_detection/
+    data_dir: ../PaddleOCRAnime/dataset/
     label_file_list:
-    - ../dataset_sub_text_detection/rec_val.txt
+    - ../PaddleOCRAnime/dataset/recTest.txt
     transforms:
     - DecodeImage:
         img_mode: BGR
