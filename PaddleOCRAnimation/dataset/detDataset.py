@@ -5,6 +5,7 @@ from PIL import Image as PILImage
 from ..video.sub.RendererClean import Box
 from os import makedirs
 from tqdm.auto import tqdm
+import re
 
 class paddleDataset:
     def __init__(self, path: str, images: list[str]):
@@ -66,7 +67,7 @@ class paddleDataset:
         ... # should be defined by subclass
     def makeTrainTest(
         self, trainProp: float = 0.8,
-        trainName: str = 'train.txt', testName: str = 'test.txt'
+        trainName: str = 'detTrain.txt', testName: str = 'detTest.txt'
     ):
         """
         Sépare le dataset en train et test et écrit deux fichiers.
@@ -229,7 +230,8 @@ class detDataset(paddleDataset):
                     f"{splitext(basename(image['image_path']))[0]}_{i}{splitext(basename(image['image_path']))[1]}"
                 ) if foldername is not None else f"{splitext(basename(image['image_path']))[0]}_{i}{splitext(basename(image['image_path']))[1]}"
 
-                rec_text_list.append(f"{rel_path}\t{annotation['transcription']}")
+                text = annotation['transcription']
+                rec_text_list.append(f"{rel_path}\t{re.sub(r"\{.*?\}", "", text)}")
 
                 crop.save(join(dirname(self.path), rel_path))
         if traintestsplit is None:

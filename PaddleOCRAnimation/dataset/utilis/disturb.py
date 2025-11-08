@@ -4,9 +4,11 @@ from typing import overload
 import random
 import numpy as np
 from io import BytesIO
-from ass import line, data
+from ass import line, data, section
 from copy import deepcopy
 import matplotlib.font_manager as fm
+from datetime import timedelta
+import re
 
 
 def disturb_eventWithPil(events: eventWithPil, p:float = 0.15,
@@ -310,3 +312,63 @@ def style_transform(style: line.Style) -> line.Style:
         style.italic = not style.italic
 
     return style
+
+
+def disturb_text(
+        event_list: section.EventsSection,
+        p_three_dots_before: float = 0.04,
+        p_three_dots_after: float = 0.07,
+        timestamp: float | timedelta | None = None
+        ) -> section.EventsSection:
+    """Randomly applies text disturbances to subtitle events to increase dataset robustness.
+
+    Currently, it may add ellipses ("...") before or after dialogue lines with given
+    probabilities. Future versions may include other modifications (e.g., typos,
+    truncations, casing changes).
+
+    Args:
+        event_list (section.EventsSection): List of dialogue events to modify.
+        p_three_dots_before (float, optional): Probability of adding "..." before text. Defaults to 0.04.
+        p_three_dots_after (float, optional): Probability of adding "..." after text. Defaults to 0.07.
+        timestamp (float | timedelta | None, optional): Optional time filter; only events active at this time are modified. Defaults to None.
+
+    Returns:
+        section.EventsSection: The modified EventsSection (same object, changed in place).
+    """
+    def add_three_dots(
+            event: line.Dialogue,
+            p_three_dots_before: float = 0.04,
+            p_three_dots_after:float = 0.07,
+            p_point_after: float = 0.12,
+            timestamp: timedelta | None = None
+    ) -> line.Dialogue:
+        if not timestamp or (event.start <= timestamp <= event.end):
+            text = re.sub(r'\{.*?\}', '', event.text.strip())
+            if random.random() < p_three_dots_before and not text.startswith('...') and not text.startswith('…'):
+                text = '...'+text
+                event.text = text
+
+            
+            if random.random() < p_three_dots_after and not text.endswith(("...", "…", "!", "?")):
+                if text.endswith('.'):
+                    text = text+'..'
+                    event.text = text
+                else:
+                    text = text+'...'
+                    event.text = text
+            elif random.random() < p_point_after and not text.endswith(("...", "…", "!", "?", '.')):
+                text = text+'.'
+                event.text = text
+        return event 
+    if isinstance(timestamp, float) or isinstance(timestamp, int):
+        timestamp = timedelta(seconds=timestamp)
+    for i, event in enumerate(event_list):
+        event_list[i] = add_three_dots(
+            event,
+            p_three_dots_after=p_three_dots_after,
+            p_three_dots_before=p_three_dots_before,
+            timestamp=timestamp
+        )
+    
+    return event_list
+    

@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from shutil import rmtree
 from datetime import timedelta, datetime
 from typing import cast, Literal
-from .disturb import disturb_image, style_transform
+from .disturb import disturb_image, style_transform, disturb_text
 from ...video.sub.RendererClean import Context
 from PIL import Image
 from ...video.classes import dataset_image
@@ -209,6 +209,7 @@ def timing_to_dataset(
         for i, style in enumerate(vid.docs[selected_sub_id].styles):
             if style.name == 'Default':
                 vid.docs[selected_sub_id].styles[i] = style_transform(style=style)
+        vid.docs[selected_sub_id].events = disturb_text()
     
     events_with_pil = vid.get_subtitle_boxes(timestamp=timing_sec, renderer=r, context=ctx, piste=selected_sub_id, multiline = multiline)
 

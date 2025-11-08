@@ -1,5 +1,6 @@
 import subprocess
-from os.path import exists, dirname, abspath, join
+from os.path import exists, dirname, abspath, join, relpath
+from os import makedirs
 import importlib.resources
 from PIL import Image
 from pathlib import Path
@@ -9,6 +10,9 @@ from platform import system
 from .DocumentPlus import DocumentPlus, split_dialogue
 from .RendererClean import Box
 from ..Video import eventWithPil, FrameToBoxEvent, eventWithPilList
+from datetime import datetime
+from ..classes import dataset_image
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +79,7 @@ def vobsub2png(idx_path: str, outputdir: str | None = None):
     except subprocess.CalledProcessError as e:
         print("Erreur de commande :", e.stderr)
 
-def vobsubpng_to_dataset(
+def vobsubpng_to_eventWithPilList(
         path_to_vobsubpng_folder: str | Path,
         path_to_sub: str | Path, 
         multiline: bool = True,
@@ -231,10 +235,121 @@ def vobsubpng_to_dataset(
         
 
 
+def vobsubpng_to_dataset(
+        root_dataset_path: str | Path,
+        path_to_vobsubpng_folder: str | Path,
+        path_to_sub: str | Path, 
+        image_save_path: str | Path | None = None,
+        dataset_txt: str | Path | None = None,
+        multiline: bool = True,
+        padding: tuple[int,int,int,int] = (0,0,0,0),
+        format: Literal['PaddleOCR'] = 'PaddleOCR',
+) -> None:
+    """
+    Convert a folder of VobSub PNG subtitles into a structured text detection dataset.
 
-if __name__ == "__main__":
-    vobsubpng_to_dataset(
-        path_to_sub='/home/maxim/code/SubProject/PaddleOCRAnime/examples/data/subs/A1_t00.ass',
-        path_to_vobsubpng_folder='/home/maxim/code/SubProject/PaddleOCRAnime/dev/subcrest'
+    This function processes PNG images exported from VobSub subtitle streams (e.g., using `vobsub2png`),
+    aligns them with textual subtitle events from an `.ass` or `.srt` file, and saves both the images
+    and corresponding text bounding boxes in a dataset format suitable for OCR training.
+
+    It internally calls `vobsubpng_to_eventWithPilList()` to associate each PNG with:
+        - its parsed subtitle event(s),
+        - the detected text bounding boxes (from alpha channel),
+        - and the subtitle text itself.
+
+    Args:
+        root_dataset_path (str | Path): 
+            Root path of the dataset folder where images and annotations will be saved.
+        path_to_vobsubpng_folder (str | Path): 
+            Path to the folder containing PNG subtitle images and their `index.json`.
+        path_to_sub (str | Path): 
+            Path to the subtitle text file (`.ass` or `.srt`).
+        image_save_path (str | Path | None, optional): 
+            Path where processed PNG images should be stored. 
+            Defaults to `<root_dataset_path>/images/text`.
+        dataset_txt (str | Path | None, optional): 
+            Path to the dataset text annotation file.
+            Defaults to `<root_dataset_path>/dataset.txt`.
+        multiline (bool, optional): 
+            If True, treat multiline subtitles as a single text block.
+            If False, split them into separate text boxes per line.
+        padding (tuple[int,int,int,int], optional): 
+            Padding (left, top, right, bottom) to apply around detected bounding boxes.
+        format (Literal['PaddleOCR'], optional): 
+            Output format for the dataset annotations. Currently supports 'PaddleOCR' only.
+
+    Raises:
+        FileNotFoundError: If any of the required paths or files are missing.
+        ValueError: If parsing fails or events and images cannot be aligned properly.
+        IndexError: If subtitle timing alignment fails between PNG and text events.
+
+    Example:
+        ```python
+        vobsubpng_to_dataset(
+            path_to_vobsubpng_folder='/path/to/vobsubpng',
+            path_to_sub='/path/to/subs/video.ass',
+            multiline=False,
+            root_dataset_path='/path/to/dataset'
+        )
+        ```
+    Notes:
+        - The alpha channel of each PNG is used to detect text areas.
+        - An `index.json` file generated alongside the PNGs is required for proper time alignment.
+        - Output images and labels can be used directly to train OCR models such as PaddleOCR.
+    """
+    def write_metadata(
+            dataset_path: str,
+            multiline: bool,
+            sub_name: str,
+            format: str,
+            n_text_images: int,
+            metadata_name: str = 'dataset_metadata.txt',
+        ) -> None:
+        if not exists(join(dataset_path, metadata_name)):
+            return None
+        with open(join(dataset_path, metadata_name), encoding='utf-8', mode='a') as f:
+            f.write("========================================\n")
+            f.write(f'Added vobsub PNG Images from {sub_name}\n')
+            f.write(f'Date: {datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")}\n')
+            f.write(f'Multiline: {multiline}\n')
+            f.write(f'Save format: {format}\n')
+            f.write(f'Images added: {n_text_images} (text: {n_text_images}, no_text: 0)\n')
+            f.write('========================================\n')
+    if image_save_path is None : 
+        image_save_path = join(str(root_dataset_path), 'images', 'text')
+    if not exists(image_save_path):
+        makedirs(image_save_path, exist_ok=True)
+    if dataset_txt is None: 
+        dataset_txt = join(str(root_dataset_path), 'dataset.txt')
+    
+    sub_name = Path(path_to_sub).stem
+    image_dataset_path = relpath(image_save_path, root_dataset_path)
+    eventWithPillist = vobsubpng_to_eventWithPilList(
+        path_to_sub=path_to_sub,
+        path_to_vobsubpng_folder=path_to_vobsubpng_folder,
+        multiline=multiline,
+        padding=padding
+    )
+
+    for event in eventWithPillist:
+        image_name = f'{sub_name}_sVOB_t{event.events[0].Event.start.total_seconds()}.png'
+        event.image.save(join(str(image_save_path), image_name))
+
+        event_dataset_image = dataset_image(
+            image_path=join(image_dataset_path, image_name),
+            event_list=event.events
+        )
+
+        event_dataset_image.to_text(
+            path=dataset_txt,
+            format=format
+        )
+    
+    write_metadata(
+        dataset_path=str(root_dataset_path),
+        multiline=multiline,
+        sub_name=sub_name,
+        format=format,
+        n_text_images=len(eventWithPillist),
     )
 
