@@ -174,6 +174,40 @@ def add_noise(img, mean: float =0, std: float =10):
     img = Image.fromarray(noisy_img)
     return img.convert('RGBA') if img.mode == 'RGBA' else img
 
+def pixelate_image(
+        img:Image.Image,
+        mean_ratio: float = 0.6,
+        sigma_ratio: float = 0.15
+    ) -> Image.Image:
+    """Applies a pixelation effect to an image by downscaling and upscaling it.
+
+    Args:
+        img (Image.Image): Input image.
+        mean_ratio (float, optional): Mean scaling ratio for downsampling. 
+            Lower values increase pixelation. Defaults to 0.6.
+        sigma_ratio (float, optional): Standard deviation of the random scaling ratio 
+            (adds randomness to pixelation strength). Defaults to 0.15.
+
+    Returns:
+        Image.Image: Pixelated version of the input image.
+    """
+    width, height = img.size
+
+    factor = random.gauss(mu=mean_ratio, sigma=sigma_ratio)
+    factor = max(0.05, min(0.9, factor))
+
+    small = img.resize(
+        (int(width * factor), int(height * factor)),
+        resample=2 # Resampling.BILINEAR
+    )
+
+    pixelated = small.resize(
+        (width, height),
+        resample=0 # Resampling.NEAREST
+    )
+
+    return pixelated
+
 def jpeg_compress(img: Image.Image, quality:int =10):
     """Sauvegarde sur RAM en JPEG (avec compression) et réouvre cette sauvegarde
     """
@@ -239,8 +273,12 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 2)))
     if random.random() < 0.15:
         img = add_noise(img, std=random.uniform(2, 12))
-    if random.random() < 0.20:
+
+    if random.random() < 0.10:
         img = jpeg_compress(img, quality=random.randint(15, 36))
+    elif random.random() < 0.25:
+        img = pixelate_image(img=img)
+
     if random.random() < 0.1:
         img = salt_and_pepper(img).convert('RGBA') if img.mode == 'RGBA' else salt_and_pepper(img)
     if random.random()<0.20:
