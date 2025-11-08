@@ -14,38 +14,50 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def disturb_eventWithPil(events: eventWithPil, p:float = 0.15,
-                             mean_band_size_perc:float = 0.2
+def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
+                             mean_band_size_perc:float = 0.2,
+                             p_pixelize: float = 0.25
                             ) -> eventWithPil:
     """
     Randomly adds transparent padding around an event image.
 
-    With probability `p` for each side (left, top, right, bottom),
+    With probability `p_padding` for each side (left, top, right, bottom),
     a random padding width is sampled from a Gaussian distribution
     centered at `mean_band_size_perc` of the corresponding image dimension.
     The padding is applied via `event.add_padding()`.
 
     Args:
         events (eventWithPil): The event containing the image, text, and boxes.
-        p (float, optional): Probability of adding padding on each side. Defaults to `0.15`.
+        p_padding (float, optional): Probability of adding padding on each side. Defaults to `0.15`.
         mean_band_size_perc (float, optional): Mean relative padding size per side. Defaults to `0.2`.
 
     Returns:
         eventWithPil: The modified event, potentially with added padding.
     """
-    perc: list[float] = [0, 0, 0, 0]
+    def add_transparent_padding(
+            events: eventWithPil,
+            p_padding:float,
+            mean_band_size_perc:float
+        ) -> eventWithPil:
+        perc: list[float] = [0, 0, 0, 0]
 
-    for i in range(0, len(perc), 1): 
-        if random.random() < p:
-               perc[i] = abs(random.gauss(mean_band_size_perc, 0.15))
-    
-    if perc == [0, 0, 0, 0]:
+        for i in range(0, len(perc), 1): 
+            if random.random() < p_padding:
+                perc[i] = abs(random.gauss(mean_band_size_perc, 0.15))
+        
+        if perc == [0, 0, 0, 0]:
+            return events
+        
+        im_w, im_h = events.image.size
+        padding = (int(im_w*perc[0]), int(im_h*perc[1]), int(im_w*perc[2]), int(im_h*perc[3]))
+        events.add_padding(padding=padding)
         return events
     
-    im_w, im_h = events.image.size
-    padding = (int(im_w*perc[0]), int(im_h*perc[1]), int(im_w*perc[2]), int(im_h*perc[3]))
-    events.add_padding(padding=padding)
-  
+    events = add_transparent_padding(events=events, p_padding=p_padding, 
+                                     mean_band_size_perc=mean_band_size_perc)
+    if random.random() < p_pixelize:
+        events.image = pixelate_image(events.image)
+    
     return events
 
 
@@ -159,11 +171,6 @@ def add_black_band(
     return new_img
 
 
-
-
-
-
-
 def add_noise(img, mean: float =0, std: float =10):
     """Rajoute du bruit (grain) sur l'image
     """
@@ -174,39 +181,71 @@ def add_noise(img, mean: float =0, std: float =10):
     img = Image.fromarray(noisy_img)
     return img.convert('RGBA') if img.mode == 'RGBA' else img
 
+@overload
 def pixelate_image(
         img:Image.Image,
+        event_list:eventWithPilList,
+        mean_ratio: float = 0.6,
+        sigma_ratio: float = 0.15
+    ) -> tuple[Image.Image, eventWithPilList]:
+    ...
+@overload
+def pixelate_image(
+        img:Image.Image,
+        event_list: None = None,
         mean_ratio: float = 0.6,
         sigma_ratio: float = 0.15
     ) -> Image.Image:
-    """Applies a pixelation effect to an image by downscaling and upscaling it.
+    ...
+def pixelate_image(
+        img:Image.Image,
+        event_list:eventWithPilList | None = None,
+        mean_ratio: float = 0.5,
+        sigma_ratio: float = 0.1,
+    ) -> Image.Image | tuple[Image.Image, eventWithPilList]:
+    """Applies a pixelation effect to an image (and optionally its subtitle overlays).
 
     Args:
-        img (Image.Image): Input image.
+        img (Image.Image): Base image (with subtitles already rendered).
+        event_list (eventWithPilList | None, optional): 
+            List of subtitle overlay events, each with its own transparent image. 
+            If provided, each overlay is pixelated with the same factor as the base image.
         mean_ratio (float, optional): Mean scaling ratio for downsampling. 
             Lower values increase pixelation. Defaults to 0.6.
         sigma_ratio (float, optional): Standard deviation of the random scaling ratio 
             (adds randomness to pixelation strength). Defaults to 0.15.
 
     Returns:
-        Image.Image: Pixelated version of the input image.
+        Image.Image | tuple[Image.Image, eventWithPilList]: 
+            The pixelated image, and optionally the updated event list.
     """
+
+    def downsize_upsize(img: Image.Image, factor: float)->Image.Image:
+        small = img.resize(
+            (int(width * factor), int(height * factor)),
+            resample=2 # Resampling.BILINEAR
+        )
+
+        pixelated = small.resize(
+            (width, height),
+            resample=0 # Resampling.NEAREST
+        )
+        return pixelated
     width, height = img.size
 
     factor = random.gauss(mu=mean_ratio, sigma=sigma_ratio)
     factor = max(0.05, min(0.9, factor))
 
-    small = img.resize(
-        (int(width * factor), int(height * factor)),
-        resample=2 # Resampling.BILINEAR
-    )
 
-    pixelated = small.resize(
-        (width, height),
-        resample=0 # Resampling.NEAREST
-    )
+    pixelated = downsize_upsize(img, factor=factor)
+    logger.debug(f"Pixaleted image with ratio {factor}")
 
-    return pixelated
+    if not event_list:
+        return pixelated
+    
+    for i, event in enumerate(event_list):
+        event_list[i].image = downsize_upsize(event.image, factor=factor)
+    return pixelated, event_list
 
 def jpeg_compress(img: Image.Image, quality:int =10):
     """Sauvegarde sur RAM en JPEG (avec compression) et réouvre cette sauvegarde
@@ -276,8 +315,11 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
 
     if random.random() < 0.10:
         img = jpeg_compress(img, quality=random.randint(15, 36))
-    elif random.random() < 0.25:
-        img = pixelate_image(img=img)
+    elif random.random() < 0.3:
+        if event_list is None:
+            img = pixelate_image(img=img)
+        else:
+            img, event_list = pixelate_image(img=img, event_list=event_list)
 
     if random.random() < 0.1:
         img = salt_and_pepper(img).convert('RGBA') if img.mode == 'RGBA' else salt_and_pepper(img)
