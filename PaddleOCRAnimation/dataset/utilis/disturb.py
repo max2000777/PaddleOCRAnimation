@@ -340,9 +340,9 @@ def disturb_text(
     """
     def add_three_dots(
             event: line.Dialogue,
-            p_three_dots_before: float = 0.04,
-            p_three_dots_after:float = 0.07,
-            p_point_after: float = 0.12,
+            p_three_dots_before: float = 0.1,
+            p_three_dots_after:float = 0.2,
+            p_point_after: float = 0.25,
             timestamp: timedelta | None = None
     ) -> line.Dialogue:
         if not timestamp or (event.start <= timestamp <= event.end):
@@ -356,6 +356,7 @@ def disturb_text(
                 if text.endswith('.'):
                     text = text+'..'
                     event.text = text
+                    logger.debug(f'Added three dots to text, new text : {text}')
                 else:
                     text = text+'...'
                     logger.debug(f'Added three dots to text, new text : {text}')

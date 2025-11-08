@@ -114,6 +114,7 @@ def create_ocr_dataset(
         multiline: bool = False,
         p_timing: float = 0.005,
         logging_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] = 'INFO',
+        ass_log_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] | None = 'DEBUG',
     ) -> None:
     """
     Automatically generates a complete OCR training dataset from a collection of MKV videos.
@@ -167,6 +168,8 @@ def create_ocr_dataset(
             Defaults to `0.005`.
         logging_level (Literal, optional):
             The logging level of the log file. By default `INFO`.
+        ass_log_level (Literal | None): 
+            The log level of the libass related outs.
 
     Workflow:
         1. **Directory setup:** Uses `path_check()` to validate and/or create all
@@ -234,7 +237,7 @@ def create_ocr_dataset(
 
     fd_stdout = os.dup(1) # libass is a c library, 
     fd_stderr = os.dup(2) # we need to redirect sdout
-    w_fd = redirect_c_stdout_to_logger()
+    w_fd = redirect_c_stdout_to_logger(ass_log_level=ass_log_level)
 
     dataset_metadata_before(dataset_path=dataset_path, main_mkv_path=main_mkv_path,
                             preferd_sub_language=preferd_sub_language, save_format=save_format,

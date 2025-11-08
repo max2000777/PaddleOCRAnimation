@@ -28,6 +28,7 @@ tests/tmp/
 dev/
 create_ocr_dataset.log
 /dataset/
+/dataset_test/
 
 #WSL
 *Zone.Identifier

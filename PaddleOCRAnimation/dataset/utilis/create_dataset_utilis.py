@@ -63,12 +63,17 @@ def dataset_metadata_after(
         f.write('========================================\n')
 
 
-def redirect_c_stdout_to_logger() -> int:
+def redirect_c_stdout_to_logger(
+        ass_log_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR']  | None = 'DEBUG'
+) -> int:
     """Redirects all C-level and Python stdout/stderr output to the Python logger.
 
     This function creates a pipe, redirects the process's standard output and error 
     streams (file descriptors 1 and 2) to it, and spawns a background thread that 
     continuously reads from the pipe and sends each line to the logger.
+
+    Args:
+        ass_log_level (Literal | None): The log level of the libass related outs.
 
     Note:
         The redirection remains active until stdout and stderr are manually restored.
@@ -84,11 +89,14 @@ def redirect_c_stdout_to_logger() -> int:
     os.dup2(w_fd, 1)
     os.dup2(w_fd, 2)
 
+    ass_log_method = getattr(logger, ass_log_level.lower(), logger.debug) if ass_log_level else None
+
     def reader():
         with os.fdopen(r_fd) as r:
             for line in r:
                 if line.startswith('[ass]'):
-                    logger.debug(line.strip())
+                    if ass_log_method:
+                        ass_log_method(line.strip())
                 elif line.strip() != '': 
                     logger.info(line.strip())
 
