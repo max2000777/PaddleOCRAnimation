@@ -31,7 +31,7 @@ def dataset_metadata_before(
     with open(os.path.join(dataset_path, 'dataset_metadata.txt'), mode='a', encoding='utf-8') as f:
         f.write("\n========================================\nDataset generation summary\n")
         f.write(f'Date: {datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")}\n')
-        f.write(f'Main MKV path: {main_mkv_path}\n')
+        f.write(f'Main MKV path: {Path(main_mkv_path).as_posix()}\n')
         f.write(f'Sub language: {preferd_sub_language}\n')
         f.write(f'Multiline: {multiline}\n')
         f.write(f'Save format: {save_format}\n')
@@ -59,7 +59,7 @@ def dataset_metadata_after(
         f.write(f'Videos found: {n_video_found}\n')
         f.write(f'Processed: {n_video_found-n_video_skiped}\n')
         f.write(f'Images generated: {n_images_text+n_images_no_text} (text: {n_images_text}, no_text: {n_images_no_text})\n')
-        f.write(f'Output dataset: {dataset_text_path}\n')
+        f.write(f'Output dataset: {Path(dataset_text_path).as_posix()}\n')
         f.write('========================================\n')
 
 
