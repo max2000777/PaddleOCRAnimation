@@ -7,9 +7,10 @@ from os import makedirs
 from tqdm.auto import tqdm
 import re
 from pathlib import Path
+import warnings
 
 class paddleDataset:
-    def __init__(self, path: str, images: list[str]):
+    def __init__(self, path: str, images: list[dict]):
         """
         Initialise le dataset.
 
@@ -18,19 +19,28 @@ class paddleDataset:
             images (list[dict]): Liste de dicts {'image_path': ..., 'annotations': ...}.
         """
         self.path:str = path
-        self.images:list = images
+        self.images:list[dict] = images
         self.length:int = len(images)
+
+        
+        self.name_dict: dict[str, int] = {}
+        for i, image in enumerate(images):
+            if image.get('image_path', None) is None:
+                raise ValueError(f'The {i} image of the dataset does not have a image_path')
+            if image['image_path'] in self.name_dict.keys():
+                raise ValueError(f"The image {image['image_path']} appears multiple times, this should not be possible")
+            self.name_dict[image['image_path']] = i
 
     def __len__(self):
         """Retourne le nombre total d'entrées dans le dataset."""
         return len(self.images)
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int | str):
         """
         Accède à une entrée par index.
 
         Args:
-            index (int): Position de l'image à récupérer.
+            index (int): Position de l'image à récupérer ou son nom.
 
         Returns:
             dict: Entrée correspondante avec 'image_path' et 'annotations'.
@@ -38,9 +48,14 @@ class paddleDataset:
         Raises:
             IndexError: Si l'index est hors bornes.
         """
+        if isinstance(index, str):
+            if index not in self.name_dict.keys():
+                raise ValueError(f'The image {index} is not in the dataset')
+            index = self.name_dict[index]
         if index < 0 or index >= len(self):
             raise IndexError(f'Out of bound (len {len(self)})')
         return self.images[index]
+
     def verify_images(self) -> list[str]:
         """
         Vérifie l'existence des fichiers image référencés.
@@ -99,12 +114,13 @@ class detDataset(paddleDataset):
 
     @classmethod
     def make_dataset(cls, path: str, val_path: str | None = None):
-        def load_file(path) -> list:
+        def load_file(path) -> list[dict]:
             images_temp=[]
+            name_dict = {}
             with open(path, 'r', encoding='utf-8') as f:
                 i=0
                 for line in f:
-                    i+=1
+                    
                     line = line.strip()
                     if not line:
                         continue
@@ -120,11 +136,16 @@ class detDataset(paddleDataset):
                         annotations = json.loads(ann_json)
                     except json.JSONDecodeError:
                         annotations = []
+                    
+                    if img_path in name_dict.keys():
+                        warnings.warn(f'The image path {img_path} appears multiple times')
+                        continue
 
                     images_temp.append({
                         'image_path': img_path,
                         'annotations': annotations
                     })
+                    i+=1
                 print(i)
             return images_temp
 
@@ -142,7 +163,7 @@ class detDataset(paddleDataset):
 
         return cls(path, images)
     
-    def renderImageWithBox(self, item: int):
+    def renderImageWithBox(self, item: int | str):
         item_dict = self[item]
 
         item_image = join(dirname(self.path), item_dict.get('image_path', None))
