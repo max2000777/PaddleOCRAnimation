@@ -1,4 +1,4 @@
-from PaddleOCRAnimation.video.sub.vobsub2png import vobsub2png, vobsubpng_to_dataset
+from PaddleOCRAnimation.video.sub.vobsub2png import vobsub2png, vobsubpng_to_eventWithPilList
 from pathlib import Path
 from shutil import rmtree
 
@@ -19,7 +19,7 @@ def test_vobsub2png():
     assert last_image_path.exists()
     rmtree(output_path)
 
-def test_vobsubpng_to_dataset():
+def test_vobsubpng_to_eventWithPilList():
     idx_path = Path(__file__).parent.parent/'examples'/'data'/'subs'/'tiny.idx'
     str_path= Path(__file__).parent.parent/'examples'/'data'/'subs'/'tiny.srt'
     output_path = Path(__file__).parent/'tmp'/'vobsub2png_results'
@@ -31,7 +31,7 @@ def test_vobsubpng_to_dataset():
         outputdir=str(output_path)
     )
 
-    b = vobsubpng_to_dataset(
+    b = vobsubpng_to_eventWithPilList(
         path_to_sub=str_path,
         path_to_vobsubpng_folder=output_path
     )

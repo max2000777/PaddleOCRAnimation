@@ -80,10 +80,11 @@ def test_get_subtitle_boxes():
         renderer=r,
         context=ctx,
         piste=0,
-        multiline=False
+        multiline=False,
+        padding=(0, 0, 0, 0)
     )
 
-    assert str(event_list[3].events[1].Boxes) == '[[0, 65], [872, 65], [872, 135], [0, 135]]'
+    assert str(event_list[3].events[1].Boxes) == '[[4, 75], [872, 75], [872, 135], [4, 135]]'
     assert isinstance(event_list[2].image, Image.Image)
 
 def test_eventWithPilList_topil():
@@ -108,7 +109,8 @@ def test_add_padding():
         renderer=r,
         context=ctx,
         piste=0,
-        multiline=False
+        multiline=False,
+        padding=(0, 0, 0, 0)
     )
     padding = (10, 33, 44, 55)
 
@@ -128,17 +130,18 @@ def test_crop():
         renderer=r,
         context=ctx,
         piste=0,
-        multiline=False
+        multiline=False,
+        padding=(0, 0, 0, 0)
     )
     padding = (-10, 33, -44, -170)
 
     assert len(event_list[3].events) == 2
-    assert event_list[2].events[1].Boxes.full_box == [[240, 863], [712, 863], [712, 930], [240, 930]]
+    assert event_list[2].events[1].Boxes.full_box == [[247, 873], [712, 873], [712, 930], [247, 930]]
     
     event_list.add_padding(padding)
 
     assert len(event_list[3].events) == 1, "One event should be removed with the cropping"
-    assert event_list[2].events[1].Boxes.full_box == [[230, 896], [702, 896], [702, 943], [230, 943]]
+    assert event_list[2].events[1].Boxes.full_box == [[237, 906], [702, 906], [702, 943], [237, 943]]
 
 
 def test_choose_sub_track():
