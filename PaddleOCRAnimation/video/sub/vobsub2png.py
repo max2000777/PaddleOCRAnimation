@@ -279,7 +279,7 @@ def vobsubpng_to_dataset(
             f.write(f'Images added: {n_text_images} (text: {n_text_images}, no_text: 0)\n')
             f.write('========================================\n')
     if image_save_path is None : 
-        image_save_path = join(str(root_dataset_path), 'images', 'text')
+        image_save_path = join(str(root_dataset_path), 'det_images', 'text')
     if not exists(image_save_path):
         makedirs(image_save_path, exist_ok=True)
     if dataset_txt is None: 
