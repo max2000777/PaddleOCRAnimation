@@ -444,11 +444,14 @@ class Video:
             base = Image.alpha_composite(base, image.to_pil(SIZE))
         return base
     
-    def get_subtitle_boxes(self,  timestamp: float | timedelta, renderer: RendererClean.Renderer,
-        context: RendererClean.Context, piste: int,
-        SIZE: tuple[int, int] | None = None,
-        transform_sub: bool = False, multiline: bool = False,
-        padding: tuple[int, int, int, int] = (7, 10, 0, 0)
+    def get_subtitle_boxes(
+            self,  
+            timestamp: float | timedelta, 
+            renderer: RendererClean.Renderer,
+            context: RendererClean.Context, piste: int,
+            SIZE: tuple[int, int] | None = None,
+            multiline: bool = False,
+            padding: tuple[int, int, int, int] = (7, 7, 7, 2)
         )-> eventWithPilList:
         """
         Extrait les boîtes englobantes des sous-titres présents à un instant donné.
@@ -496,23 +499,14 @@ class Video:
                 x_min = min(point[0] for point in box.full_box)
                 return (y_min, x_min)
             return sorted(boxes, key=position_cle)
+
         if isinstance(timestamp, float) or isinstance(timestamp, int):
             timestamp = timedelta(seconds=timestamp)
         if SIZE is None:
             SIZE = self.taille
         doc = self.docs[piste]
+
         nb_event_in_frame, events_in_frame = doc.nb_event_dans_frame(timestamp, returnEvents=True)
-
-        if transform_sub and nb_event_in_frame == 1 and events_in_frame[0].style == 'Default':
-            # Il n'y a qu'un seul event dans la frame et il a le style par défaut,
-            # on peu se permettre de le modifier
-            doc = doc.doc_event_donne(events_in_frame[0])
-            for i in range(len(doc.styles)):
-
-                # GERER LES STYLES OVERIDES
-                if doc.styles[i].name == 'Default':
-                    doc.styles[i] = style_transform(doc.styles[i])
-                    break
 
         returnliste = []
         for i, event in enumerate(events_in_frame):
@@ -526,10 +520,12 @@ class Video:
             t = context.make_track()
             t.populate(docCopie)
             resultats_libass = renderer.render_frame(t, timestamp)
+
             if SIZE is not None and SIZE != (0,0):
                 biggest_h, biggest_w, smallest_dist_x, smallest_dist_y = 0, 0, 0, 0
             else: # No sizes so create small images
                 biggest_h, biggest_w, smallest_dist_x, smallest_dist_y = resultats_libass.get_distances_list()
+            
             PIL = resultats_libass.to_pil(SIZE)
             event_tuple=(PIL,[])
             # TODO : faire un dictonnaire de classe
