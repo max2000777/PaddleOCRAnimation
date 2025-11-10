@@ -6,6 +6,7 @@ from ..video.sub.RendererClean import Box
 from os import makedirs
 from tqdm.auto import tqdm
 import re
+from pathlib import Path
 
 class paddleDataset:
     def __init__(self, path: str, images: list[str]):
@@ -232,7 +233,7 @@ class detDataset(paddleDataset):
 
                 text = annotation['transcription']
                 text = re.sub(r'\{.*?\}', '', text)
-                rec_text_list.append(f"{rel_path}\t{text}")
+                rec_text_list.append(f"{Path(rel_path).as_posix()}\t{text}")
 
                 crop.save(join(dirname(self.path), rel_path))
         if traintestsplit is None:
