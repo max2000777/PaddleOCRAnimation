@@ -13,6 +13,7 @@ from ..Video import eventWithPil, FrameToBoxEvent, eventWithPilList
 from datetime import datetime
 from ..classes import dataset_image
 from typing import Literal
+from ..utilis import detect_text_line_boxes
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ def vobsubpng_to_eventWithPilList(
         path_to_vobsubpng_folder: str | Path,
         path_to_sub: str | Path, 
         multiline: bool = True,
-        padding: tuple[int,int,int,int] = (0,0,0,0)
+        padding: tuple[int,int,int,int] = (7,2,3,1)
 )->eventWithPilList:
     """
     Build a dataset linking VobSub PNG images to subtitle text and bounding boxes.
@@ -114,44 +115,6 @@ def vobsubpng_to_eventWithPilList(
         - The function assumes PNG transparency corresponds to text areas.
         - It expects an `index.json` with subtitle metadata and start times.
     """
-    def detect_text_line_boxes(sub_image, multiline: bool = True):
-        import numpy as np
-        # we need to find the box  of the text, because the image is transparent it is relativly easy
-        alpha = sub_image.split()[-1]
-        bbox = alpha.getbbox()
-        if bbox is None:
-            return []  # there is not text on the image
-        
-        if multiline:
-            # beacause multiline is allowed, no further modification need to be done
-            return [bbox]
-
-        cropped = alpha.crop(bbox)
-        arr = np.array(cropped)
-        binary = (arr > 0).astype(np.uint8)
-        projection = binary.sum(axis=1)
-        line_boxes = []
-        in_line = False
-        start = 0
-
-        for y, val in enumerate(projection):
-            if val > 0 and not in_line:
-                in_line = True
-                start = y
-            elif val == 0 and in_line:
-                in_line = False
-                end = y
-                line_boxes.append((start, end))
-
-        if in_line:
-            line_boxes.append((start, len(projection)))
-        abs_boxes = []
-        for (y1, y2) in line_boxes:
-            # we want the boxes of each lines
-            abs_y1 = bbox[1] + y1
-            abs_y2 = bbox[1] + y2
-            abs_boxes.append((bbox[0], abs_y1, bbox[2], abs_y2))
-        return abs_boxes
 
     if isinstance(path_to_vobsubpng_folder, str):
         path_to_vobsubpng_folder = Path(path_to_vobsubpng_folder)
@@ -242,7 +205,7 @@ def vobsubpng_to_dataset(
         image_save_path: str | Path | None = None,
         dataset_txt: str | Path | None = None,
         multiline: bool = True,
-        padding: tuple[int,int,int,int] = (0,0,0,0),
+        padding: tuple[int,int,int,int] = (7,2,3,1),
         format: Literal['PaddleOCR'] = 'PaddleOCR',
 ) -> None:
     """
