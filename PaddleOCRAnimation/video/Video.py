@@ -20,6 +20,8 @@ import logging
 from .iso_codes import iso_639_dict
 from ..dataset.utilis.disturb import disturb_image, style_transform
 from .classes import eventWithPilList, eventWithPil, FrameToBoxEvent, FrameToBoxResult, SubTrackInfo
+from ..video.utilis import detect_text_line_boxes
+from .sub.box import Box
 
 logger = logging.getLogger(__name__)
 
@@ -451,7 +453,8 @@ class Video:
             context: RendererClean.Context, piste: int,
             SIZE: tuple[int, int] | None = None,
             multiline: bool = False,
-            padding: tuple[int, int, int, int] = (7, 7, 7, 2)
+            padding: tuple[int, int, int, int] = (7, 7, 7, 2),
+            use_transparency: bool = True,
         )-> eventWithPilList:
         """
         Extrait les boîtes englobantes des sous-titres présents à un instant donné.
@@ -490,11 +493,11 @@ class Video:
                 return l_dialogues
             else: 
                 return [dialogue]
-        def trier_boxes_par_position(boxes: list[RendererClean.Box]) -> list[RendererClean.Box]:
+        def trier_boxes_par_position(boxes: list[Box]) -> list[Box]:
             """Permet de trier une liste de boites, avec les plus hautes en premier
             en cas d'équalitées c'est la plus à droite qui est choisie
             """
-            def position_cle(box: RendererClean.Box):
+            def position_cle(box: Box):
                 y_min = min(point[1] for point in box.full_box)
                 x_min = min(point[0] for point in box.full_box)
                 return (y_min, x_min)
@@ -532,7 +535,8 @@ class Video:
             if not multiline:
                 events_list = splitDialogue(event)
                 boxes_list = trier_boxes_par_position(
-                    resultats_libass.to_singleline_boxes(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
+                    resultats_libass.to_singleline_boxes(padding=padding if not use_transparency else (0, 0, 0, 0),
+                                                         xy_offset=(smallest_dist_x, smallest_dist_y))
                 )
                 if len(events_list) != len(boxes_list):
                     vid_name = basename(self.path)
@@ -540,6 +544,15 @@ class Video:
                         f"'{vid_name}', {timestamp} : there should be the same number of line than the number of boxes (here {len(events_list)} lines and {len(boxes_list)} boxes). "
                         "This is most likely due to libass automatic line break when the text is too long"
                     )
+                
+                if use_transparency and len(boxes_list) >1 :
+                    boxes_list = detect_text_line_boxes(PIL, multiline=multiline, libass_box=boxes_list)
+                    for i, box in enumerate(boxes_list):
+                        w,h = PIL.size
+                        boxes_list[i] = Box(
+                            [max(box[0]-padding[0], 0), max(box[1]-padding[1], 0)], [min(box[2]+padding[2], w), max(box[1]-padding[1], 0)],
+                            [min(box[2]+padding[2], w), min(box[3]+padding[3], h)], [max(box[0]-padding[0], 0), min(box[3]+padding[3], h)]
+                        )
                 for i in range(len(events_list)):
                     dict_event = {
                         "Event": events_list[i],
@@ -547,9 +560,22 @@ class Video:
                     }
                     event_tuple[1].append(FrameToBoxEvent(**dict_event))
             else:
+                if use_transparency:
+                    box = detect_text_line_boxes(PIL, multiline=multiline)
+                    if len(box) != 1:
+                        raise ValueError(f"The should be one box, there is only one event and it is multiline")
+                    w,h =SIZE
+                    box = box[0]
+                    box = Box(
+                [max(box[0]-padding[0], 0), max(box[1]-padding[1], 0)], [min(box[2]+padding[2], w), max(box[1]-padding[1], 0)],
+                [min(box[2]+padding[2], w), min(box[3]+padding[3], h)], [max(box[0]-padding[0], 0), min(box[3]+padding[3], h)]
+            )
+                else:
+                    box = resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
+
                 dict_event = {
                         "Event": event,
-                        "Boxes": resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
+                        "Boxes": box
                     }
                 event_tuple[1].append(
                     FrameToBoxEvent(**dict_event)

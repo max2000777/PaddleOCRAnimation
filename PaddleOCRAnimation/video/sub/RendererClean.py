@@ -6,7 +6,6 @@ from collections import Counter
 from datetime import timedelta
 
 from PIL import Image as PILIMAGE
-from PIL import ImageDraw
 
 from ass import Document
 
@@ -20,6 +19,9 @@ import numpy as np
 
 from typing import Iterator, Tuple, ClassVar
 
+from ..utilis import detect_text_line_boxes
+
+from .box import Box
 import importlib.resources
 import importlib.resources._legacy
 
@@ -54,157 +56,6 @@ if _libass is None:
 if _libc is None:
     raise ImportError("Librairie C non trouvée (pas instalée ou pas dans le PATH)")
 
-class Box:
-    """
-    Représente une boîte englobante (rectangle ou polygone) associée à
-    un élément rendu (texte, outline, etc.).
-    Permet de manipuler et de dessiner la boîte sur une image PIL.
-    """
-    def __init__(self, haut_gauche, haut_droit, bas_droit, bas_gauche, event_type=None):
-        for coin in [haut_gauche, haut_droit, bas_droit, bas_gauche]:
-            for element in coin:
-                if not isinstance(element, int) or element < 0:
-                    raise ValueError(f"Boxes coin should be a positive int (here {element})")
-        self.haut_gauche: list[int] = haut_gauche
-        self.haut_droit: list[int] = haut_droit
-        self.bas_droit: list[int] = bas_droit
-        self.bas_gauche: list[int] = bas_gauche
-        self.full_box: list[list[int]] = [
-            self.haut_gauche,
-            self.haut_droit,
-            self.bas_droit,
-            self.bas_gauche
-            ]
-        self.event_type: int | None = event_type
-    
-    def __repr__(self):
-        return f'{self.full_box}'
-
-    def get_bounding_box(self):
-        """Retourne le plus petit rectangle aligné avec les axes qui contient entièrement la boîte
-        """
-        xs = [point[0] for point in self.full_box]
-        ys = [point[1] for point in self.full_box]
-        x_min, x_max = min(xs), max(xs)
-        y_min, y_max = min(ys), max(ys)
-        return x_min, y_min, x_max, y_max  # gauche, haut, droite, bas
-    
-    def add_padding(self, padding: tuple[int, int, int, int],
-                    image_size: tuple[int, int] | None = None):
-        """Shift and optionally clamp the box coordinates when padding or cropping 
-        is applied to the subtitle image.
-
-        The padding is defined as (left, top, right, bottom):  
-        - Positive values add transparent padding around the image, shifting the box 
-        rightward or downward.  
-        - Negative values indicate cropping (pixels removed from edges), shifting 
-        the box leftward or upward.  
-
-        When `image_size` is provided, the method also ensures that the box 
-        coordinates remain within the image boundaries. Boxes that fall completely 
-        outside after cropping are invalidated (set to [[0, 0], ...]).
-
-        Args:
-            padding (tuple[int, int, int, int]): Padding values (left, top, right, bottom). 
-                Positive for expansion, negative for cropping.
-            image_size (tuple[int, int] | None, optional): 
-                The (width, height) of the image after padding/cropping. 
-                If provided, coordinates are clamped to the image boundaries.
-
-        Raises:
-            ValueError: 
-                - If `padding` is not a tuple of four integers.
-        """
-        if (
-            not isinstance(padding, tuple) 
-            or not all([isinstance(a, int) for a in padding]) 
-            or not len(padding)==4
-        ):
-            raise ValueError(f'padding should be a tuple with 4 int, here {padding}')
-        
-        padding_left, padding_top, _, _ = padding
-
-        self.haut_gauche = [max(self.haut_gauche[0]+padding_left, 0), max(self.haut_gauche[1]+padding_top, 0)]
-        self.haut_droit = [max(self.haut_droit[0]+padding_left, 0), max(self.haut_droit[1]+padding_top, 0)]
-        self.bas_droit = [max(self.bas_droit[0]+padding_left, 0), max(self.bas_droit[1]+padding_top, 0)]
-        self.bas_gauche = [max(self.bas_gauche[0]+padding_left, 0), max(self.bas_gauche[1]+padding_top, 0)]
-
-        if image_size is not None:
-            if (padding[2]<0): 
-                self.bas_droit[0] = min(self.bas_droit[0], image_size[0])
-                self.haut_droit[0] = self.bas_droit[0]
-            if (padding[3]<0):
-                self.bas_droit[1] = min(self.bas_droit[1], image_size[1])
-                self.bas_gauche[1] = self.bas_droit[1]
-        self.full_box = [
-            self.haut_gauche,
-            self.haut_droit,
-            self.bas_droit,
-            self.bas_gauche
-        ]
-        if self.bas_droit[0] <= self.bas_gauche[0]:
-            # The box is considered non existant 
-            self.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
-        if self.bas_droit[1] <= self.haut_droit[1]:
-                self.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
-
-    def to_pil(self, size,
-               border_color: int | tuple[int, int, int, int] = (255, 0, 0, 255),
-               border_width=3, use_type: bool = True) -> PILIMAGE.Image:
-        """
-        Génère une image PIL contenant la boîte (polygone) représentée par cet objet Box.
-
-        Args:
-            size (tuple[int, int]): Taille de l'image de sortie (largeur, hauteur).
-            border_color (int | tuple[int], optional): Couleur du contour. Peut être un entier
-                (0 à 3 pour un mapping couleur prédéfini)
-                ou un tuple RGBA (4 entiers entre 0 et 255). Par défaut (255, 0, 0, 255).
-            border_width (int, optional): Largeur du contour en pixels. Par défaut 3.
-            use_type (bool, optional): Si True et que event_type est défini, utilise event_type
-                pour déterminer la couleur du contour. Par défaut True.
-
-        Raises:
-            ValueError: Si border_color est un int mais n'est pas dans [0, 1, 2, 3].
-            ValueError: Si border_color n'est pas un tuple RGBA valide.
-
-        Returns:
-            PIL.Image: Image PIL RGBA contenant la boîte dessinée avec le contour spécifié.
-        """
-        img = PILIMAGE.new("RGBA", size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img, "RGBA")
-        if use_type and self.event_type is not None:
-            border_color = self.event_type
-        if isinstance(border_color, int):
-            if border_color not in [0, 1, 2, 3]:
-                raise ValueError(
-                    f"Si border_color est un int, il doit être dans 0, 1, 2, 3. Ici {border_color}"
-                )
-            colorMap = {
-                0: (0, 0, 255, 255),
-                1: (255, 0, 0, 255),
-                2: (0, 255, 0, 255),
-                3: (255, 255, 0, 255)
-            }
-            border_color = colorMap[border_color]
-        if (
-            not isinstance(border_color, tuple)
-            or len(border_color) != 4
-            or not all(0 <= col <= 255 for col in border_color)
-           ):
-            raise ValueError(
-                "border_color doit être un tuple de taille 4 remplis"
-                f" de int entre 0 et 255 (RGBA) ici {border_color}"
-            )
-
-        draw.polygon(self.full_box, outline=border_color)
-
-        # Épaissir le contour si nécessaire
-        if border_width > 1:
-            for i in range(len(self.full_box)):
-                draw.line([self.full_box[i], self.full_box[(i+1) % len(self.full_box)]],
-                          fill=border_color, width=border_width)
-
-        return img
 
 
 class Image(ctypes.Structure):
@@ -452,7 +303,7 @@ class ImageSequence(object):
 
     def to_box(
             self, padding: tuple[int, int, int, int] = (0, 0, 0, 0),
-            xy_offset: tuple[int, int] = (0,0)
+            xy_offset: tuple[int, int] = (0,0),
         ) -> Box:
         """
         Calcule la boîte englobante (bounding box) de toutes les images de la séquence.
