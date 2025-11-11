@@ -453,31 +453,44 @@ class Video:
             context: RendererClean.Context, piste: int,
             SIZE: tuple[int, int] | None = None,
             multiline: bool = False,
-            padding: tuple[int, int, int, int] = (7, 7, 7, 2),
+            padding: tuple[int, int, int, int] = (3, 2, 3, 2),
             use_transparency: bool = True,
         )-> eventWithPilList:
         """
-        Extrait les boîtes englobantes des sous-titres présents à un instant donné.
+        Render subtitle events at a given timestamp and extract their text bounding boxes.
 
-        Cette méthode rend les sous-titres de la piste spécifiée à l'instant `timestamp` et
-        retourne pour chaque événement (ligne de sous-titre) la boîte englobante correspondante,
-        ainsi que l'image PIL du rendu des sous-titres. Elle gère les sous-titres multilignes,
-        l'application optionnelle de transformations de style, et le padding autour des boîtes.
+        This method uses libass to render subtitles from the specified track (`piste`) 
+        into a transparent PIL image, then detects text bounding boxes for each subtitle 
+        line or block.
 
         Args:
-            timestamp (float | timedelta): Instant de la vidéo pour lequel extraire les sous-titres.
-            SIZE (tuple[int, int]): Taille de l'image (largeur, hauteur), si `None`, prend la taille de la vidéo, si `(0, 0)` les pil sont les petites images.
-            renderer (RendererClean.Renderer): Objet de rendu libass.
-            context (RendererClean.Context): Contexte de rendu libass.
-            piste (int): Index de la piste de sous-titres à utiliser.
-            transform_sub (bool, optional): Applique une transformation aléatoire au style du sous-titre (par défaut False).
-            multiline (bool, optional): Si True, retourne une boîte par événement, sinon une boîte par ligne (par défaut False).
-            padding (tuple[int, int, int, int], optional): Padding à appliquer autour des boîtes (par défaut (7, 10, 0, 0)).
+            timestamp (float | timedelta): Time position in seconds or timedelta.
+            renderer (RendererClean.Renderer): The libass renderer used to draw subtitles.
+            context (RendererClean.Context): Rendering context for the ASS document.
+            piste (int): Subtitle track index in the MKV file.
+            SIZE (tuple[int, int] | None, optional): Target render size (width, height). 
+                Defaults to the video size.
+            multiline (bool, optional): Whether to treat multiline subtitles as one box. 
+                Defaults to False.
+            padding (tuple[int, int, int, int], optional): Padding around detected boxes 
+                (left, top, right, bottom). Defaults to (3, 2, 3, 2).
+            use_transparency (bool, optional): Whether to refine box detection using 
+                the alpha channel from the rendered image. Defaults to True.
 
         Returns:
-            tuple:
-                - Liste des événements avec leur boîte englobante.
-                - Liste des images PIL correspondant au rendu des sous-titres.
+            eventWithPilList: A list-like container where each element contains:
+                - `image` (PIL.Image): The rendered subtitle frame.
+                - `events` (list[FrameToBoxEvent]): Each containing the event and its box.
+
+        Raises:
+            ValueError: If the number of detected boxes does not match the number 
+                of subtitle lines when `multiline=False`.
+
+        Notes:
+            - When `use_transparency=True`, bounding boxes are refined from the rendered 
+            alpha mask instead of relying solely on libass geometry.
+            - When multiple subtitle events overlap at the same timestamp, each is 
+            processed independently.
         """
         def splitDialogue(dialogue: Dialogue) -> list[Dialogue]:
             """sépare un dialogue de plusieurs lignes en plusieurs dialogues d'une ligne
@@ -545,7 +558,7 @@ class Video:
                         "This is most likely due to libass automatic line break when the text is too long"
                     )
                 
-                if use_transparency and len(boxes_list) >1 :
+                if use_transparency:
                     boxes_list = detect_text_line_boxes(PIL, multiline=multiline, libass_box=boxes_list)
                     for i, box in enumerate(boxes_list):
                         w,h = PIL.size
