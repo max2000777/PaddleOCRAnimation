@@ -7,6 +7,27 @@ def detect_text_line_boxes(
         threshold_percent:float = 0.01,
         libass_box: list[Box] | None = None
     ) -> list[tuple[int, int, int, int]]:
+        """
+        Detects bounding boxes for text lines in a transparent subtitle image.
+
+        This function analyzes the alpha channel of a subtitle image (typically rendered by libass)
+        to estimate the bounding boxes of each text line. It supports both heuristic detection based
+        on pixel projection and guided splitting using precomputed libass bounding boxes.
+
+        Args:
+            sub_image (Image.Image): Transparent image of a single subtitle event (one or more lines).
+            multiline (bool, optional): If True, treat the subtitle as a single multi-line block.
+                If False, detect and separate individual text lines. Defaults to True.
+            threshold_percent (float, optional): Threshold ratio (relative to the maximum horizontal
+                projection) used to detect line boundaries when `libass_box` is not provided.
+                Defaults to 0.01.
+            libass_box (list[Box] | None, optional): Optional list of bounding boxes from libass
+                to refine or guide the line splitting. Defaults to `None`.
+
+        Returns:
+            list[tuple[int, int, int, int]]: List of bounding boxes (x1, y1, x2, y2) for each
+            detected text line in absolute image coordinates.
+        """
         #the image should be the transpatent image of one event (one sub) with one or more line
 
         import numpy as np
