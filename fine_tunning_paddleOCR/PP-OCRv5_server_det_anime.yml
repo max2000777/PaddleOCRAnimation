@@ -2,7 +2,7 @@ Global:
   model_name: &model_name PP-OCRv5_server_det # To use static model for inference.
   debug: false
   use_gpu: true
-  epoch_num: &epoch_num 50
+  epoch_num: &epoch_num 10
   log_smooth_window: 20
   print_batch_step: 10
   save_model_dir: ../PaddleOCR_output/PP-OCRv5_server_det_anime
@@ -142,8 +142,8 @@ Train:
   loader:
     shuffle: true
     drop_last: false
-    batch_size_per_card: 6
-    num_workers: 6
+    batch_size_per_card: 8
+    num_workers: 8
 
 Eval:
   dataset:

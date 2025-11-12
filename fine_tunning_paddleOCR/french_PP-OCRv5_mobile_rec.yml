@@ -87,7 +87,7 @@ Train:
     data_dir: ../PaddleOCRAnime/dataset/
     ext_op_transform_idx: 1
     label_file_list:
-    - ../PaddleOCRAnime/dataset/rec_train.txt
+    - ../PaddleOCRAnime/dataset/recTrain.txt
     transforms:
     - DecodeImage:
         img_mode: BGR
@@ -125,7 +125,7 @@ Eval:
     name: SimpleDataSet
     data_dir: ../PaddleOCRAnime/dataset/
     label_file_list:
-    - ../PaddleOCRAnime/dataset/rec_val.txt
+    - ../PaddleOCRAnime/dataset/recTest.txt
     transforms:
     - DecodeImage:
         img_mode: BGR
