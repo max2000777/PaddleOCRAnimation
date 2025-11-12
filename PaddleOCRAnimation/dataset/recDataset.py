@@ -82,6 +82,10 @@ class recDataset(paddleDataset):
             print(f'removed {num_del_images} images (new length is {len(new_image_list)})')
             self.images = new_image_list
         
+        def print_text_and_display_image(self, index: int | str):
+            print(self[index]['transcript'])
+            return self.display_image(index=index)
+
         def save_dataframe(self, path: str, data):
             with open(path, 'w', encoding='utf-8') as f:
                 for item in data:
