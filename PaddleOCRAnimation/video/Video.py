@@ -453,7 +453,7 @@ class Video:
             context: RendererClean.Context, piste: int,
             SIZE: tuple[int, int] | None = None,
             multiline: bool = False,
-            padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.005, 0.05, 0.005, 0.05),
+            padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (1, 1, 1, 1),
             use_transparency: bool = True,
         )-> eventWithPilList:
         """
@@ -473,7 +473,7 @@ class Video:
             multiline (bool, optional): Whether to treat multiline subtitles as one box. 
                 Defaults to False.
             padding (tuple[int, int, int, int], optional): Padding around detected boxes 
-                (left, top, right, bottom). Defaults to (0.005, 0.05, 0.005, 0.05).
+                (left, top, right, bottom). Defaults to (1, 1, 1, 1).
             use_transparency (bool, optional): Whether to refine box detection using 
                 the alpha channel from the rendered image. Defaults to True.
 
@@ -575,6 +575,8 @@ class Video:
                                 [min(int(box[2]+box_w *padding[2]), w), min(int(box[3]+box_h*padding[3]), h)], 
                                 [max(int(box[0]-box_w *padding[0]), 0), min(int(box[3]+box_h*padding[3]), h)]
                             )
+                        else:
+                            raise ValueError('Padding should be all int or all float between 0 and 1')
                 for i in range(len(events_list)):
                     dict_event = {
                         "Event": events_list[i],
@@ -583,15 +585,25 @@ class Video:
                     event_tuple[1].append(FrameToBoxEvent(**dict_event))
             else:
                 if use_transparency:
-                    box = detect_text_line_boxes(PIL, multiline=multiline)
+                    box = detect_text_line_boxes(PIL, multiline=multiline)[0]
                     if len(box) != 1:
                         raise ValueError(f"The should be one box, there is only one event and it is multiline")
-                    w,h =SIZE
-                    box = box[0]
-                    box = Box(
-                [max(box[0]-padding[0], 0), max(box[1]-padding[1], 0)], [min(box[2]+padding[2], w), max(box[1]-padding[1], 0)],
-                [min(box[2]+padding[2], w), min(box[3]+padding[3], h)], [max(box[0]-padding[0], 0), min(box[3]+padding[3], h)]
-            )
+                    w,h = PIL.size
+                    box_w, box_h = box[2] - box[0], box[3]-box[1] 
+                    if all([isinstance(b, int) for b in padding]):
+                        boxes_list[i] = Box(
+                            [max(box[0]-padding[0], 0), max(box[1]-padding[1], 0)], [min(box[2]+padding[2], w), max(box[1]-padding[1], 0)],
+                            [min(box[2]+padding[2], w), min(box[3]+padding[3], h)], [max(box[0]-padding[0], 0), min(box[3]+padding[3], h)]
+                        )
+                    elif all([isinstance(b, float) for b in padding]) and all([0<=b<=1 for b in padding]):
+                        boxes_list[i] = Box(
+                            [max(int(box[0]-box_w * padding[0]), 0), max(int(box[1]-box_h*padding[1]), 0)], 
+                            [min(int(box[2]+box_w *padding[2]), w), max(int(box[1]- box_h*padding[1]), 0)],
+                            [min(int(box[2]+box_w *padding[2]), w), min(int(box[3]+box_h*padding[3]), h)], 
+                            [max(int(box[0]-box_w *padding[0]), 0), min(int(box[3]+box_h*padding[3]), h)]
+                        )
+                    else:
+                        raise ValueError('Padding should be all int or all float between 0 and 1')
                 else:
                     box = resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
 

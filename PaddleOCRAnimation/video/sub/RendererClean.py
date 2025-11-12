@@ -339,7 +339,7 @@ class ImageSequence(object):
             y2 = max(y2, fullBox[2][1], fullBox[3][1])
         
         w, h = x2 - x1, y2 - y1
-        if all([(isinstance(p, float) or p ==0 or p==1) for p in padding]) and all([0<=p<=1 for p in padding]):
+        if all([(isinstance(p, float)) for p in padding]) and all([0<p<1 for p in padding]):
             padding= (int(padding[0]*w), int(padding[1]*h), int(padding[2]*w), int(padding[3]*h))
 
         return Box(
