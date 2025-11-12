@@ -153,6 +153,7 @@ def select_timings(duration_sec:float, p:float=0.01, precision:float=0.1) -> lis
     k = np.random.binomial(n, p)
     timings = np.random.uniform(0, duration_sec, size=k)
     timings = (np.round(np.sort(timings), 3)).tolist()
+    timings = list(dict.fromkeys(timings)) # remove duplicates
     logger.debug(f'Selected {len(timings)} timings')
     return timings
 
