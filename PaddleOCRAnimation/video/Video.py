@@ -453,7 +453,7 @@ class Video:
             context: RendererClean.Context, piste: int,
             SIZE: tuple[int, int] | None = None,
             multiline: bool = False,
-            padding: tuple[int, int, int, int] = (3, 2, 3, 2),
+            padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.005, 0.05, 0.005, 0.05),
             use_transparency: bool = True,
         )-> eventWithPilList:
         """
@@ -473,7 +473,7 @@ class Video:
             multiline (bool, optional): Whether to treat multiline subtitles as one box. 
                 Defaults to False.
             padding (tuple[int, int, int, int], optional): Padding around detected boxes 
-                (left, top, right, bottom). Defaults to (3, 2, 3, 2).
+                (left, top, right, bottom). Defaults to (0.005, 0.05, 0.005, 0.05).
             use_transparency (bool, optional): Whether to refine box detection using 
                 the alpha channel from the rendered image. Defaults to True.
 
@@ -562,10 +562,19 @@ class Video:
                     boxes_list = detect_text_line_boxes(PIL, multiline=multiline, libass_box=boxes_list)
                     for i, box in enumerate(boxes_list):
                         w,h = PIL.size
-                        boxes_list[i] = Box(
-                            [max(box[0]-padding[0], 0), max(box[1]-padding[1], 0)], [min(box[2]+padding[2], w), max(box[1]-padding[1], 0)],
-                            [min(box[2]+padding[2], w), min(box[3]+padding[3], h)], [max(box[0]-padding[0], 0), min(box[3]+padding[3], h)]
-                        )
+                        box_w, box_h = box[2] - box[0], box[3]-box[1] 
+                        if all([isinstance(b, int) for b in padding]):
+                            boxes_list[i] = Box(
+                                [max(box[0]-padding[0], 0), max(box[1]-padding[1], 0)], [min(box[2]+padding[2], w), max(box[1]-padding[1], 0)],
+                                [min(box[2]+padding[2], w), min(box[3]+padding[3], h)], [max(box[0]-padding[0], 0), min(box[3]+padding[3], h)]
+                            )
+                        elif all([isinstance(b, float) for b in padding]) and all([0<=b<=1 for b in padding]):
+                            boxes_list[i] = Box(
+                                [max(int(box[0]-box_w * padding[0]), 0), max(int(box[1]-box_h*padding[1]), 0)], 
+                                [min(int(box[2]+box_w *padding[2]), w), max(int(box[1]- box_h*padding[1]), 0)],
+                                [min(int(box[2]+box_w *padding[2]), w), min(int(box[3]+box_h*padding[3]), h)], 
+                                [max(int(box[0]-box_w *padding[0]), 0), min(int(box[3]+box_h*padding[3]), h)]
+                            )
                 for i in range(len(events_list)):
                     dict_event = {
                         "Event": events_list[i],

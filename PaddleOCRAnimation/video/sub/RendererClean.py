@@ -153,7 +153,7 @@ class Image(ctypes.Structure):
 
     def to_box(
             self, 
-            padding: tuple[int, int, int, int] = (0, 0, 0, 0),
+            padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0, 0, 0, 0),
             xy_offset: tuple[int, int] = (0,0)
         ) -> Box:
         """
@@ -165,7 +165,8 @@ class Image(ctypes.Structure):
 
         Args:
             padding (tuple[int, int, int, int]): 
-                Marges supplémentaires à appliquer sur chaque bord de la boîte 
+                Marges supplémentaires à appliquer sur chaque bord de la boîte.
+                Si int en pixels si float en pourcentage.
                 sous la forme (gauche, haut, droite, bas).  
                 Par défaut, aucun padding n'est appliqué `(0, 0, 0, 0)`.
             
@@ -185,6 +186,10 @@ class Image(ctypes.Structure):
         x2 = x1 + self.w
         y1 = self.dst_y - xy_offset[1]
         y2 = y1 + self.h
+
+        if all([(isinstance(p, float) or p ==0 or p==1) for p in padding]) and all([0<=p<=1 for p in padding]):
+            padding= (int(padding[0]*self.w), int(padding[1]*self.h), int(padding[2]*self.w), int(padding[3]*self.h))
+        
 
         box = Box(
             [max(x1 - padding[0], 0), max(y1 - padding[1], 0)],
@@ -302,13 +307,13 @@ class ImageSequence(object):
         return base
 
     def to_box(
-            self, padding: tuple[int, int, int, int] = (0, 0, 0, 0),
+            self, padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0, 0, 0, 0),
             xy_offset: tuple[int, int] = (0,0),
         ) -> Box:
         """
         Calcule la boîte englobante (bounding box) de toutes les images de la séquence.
         Args:
-            padding (tuple[int, int, int, int]): permet d'agrendir la boite
+            padding (tuple): permet d'agrendir la boite
                 (droite, haute, gauche, bas), par défaut aucun padding.
 
         Returns:
@@ -332,6 +337,11 @@ class ImageSequence(object):
             y1 = min(y1, fullBox[0][1], fullBox[1][1])
 
             y2 = max(y2, fullBox[2][1], fullBox[3][1])
+        
+        w, h = x2 - x1, y2 - y1
+        if all([(isinstance(p, float) or p ==0 or p==1) for p in padding]) and all([0<=p<=1 for p in padding]):
+            padding= (int(padding[0]*w), int(padding[1]*h), int(padding[2]*w), int(padding[3]*h))
+
         return Box(
             [max(x1 - padding[0], 0), max(y1 - padding[1], 0)], 
             [max(x2 + padding[2], 0), max(y1 - padding[1], 0)],
@@ -341,13 +351,13 @@ class ImageSequence(object):
         )
 
     def to_singleline_boxes(
-            self, padding: tuple[int, int, int, int] = (0, 0, 0, 0),
+            self, padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0, 0, 0, 0),
             xy_offset: tuple[int, int] = (0,0)
         ) -> list[Box]:
         """
         Calcule les boites de toutes les images de la séquences, une boite par ligne.
         Args:
-            padding (tuple[int, int, int, int]): permet d'agrendir la boite
+            padding (tuple[int, int, int, int]): permet d'agrendir la boite. si int en pixel si float en pourcentage.
                 (droite, haute, gauche, bas), par défaut aucun padding.
 
         Returns:

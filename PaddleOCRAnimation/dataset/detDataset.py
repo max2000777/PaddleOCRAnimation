@@ -171,7 +171,7 @@ class detDataset(paddleDataset):
             raise ValueError('The format is invalid, the item should have a \'image_path\' attribute')
         if not exists(item_image):
             raise FileNotFoundError(f'The image {item_image} does not exist')
-        base = PILImage.open(item_image)
+        base = PILImage.open(item_image).convert('RGBA')
         SIZE = base.size
 
         item_annotations = item_dict.get('annotations', None)
@@ -196,7 +196,7 @@ class detDataset(paddleDataset):
             self, foldername: str | None = None,
             txt_name: str | None = None, 
             traintestsplit: float | None = None,
-            val_txt_name: str = 'rec_val.txt'
+            val_txt_name: str = 'recTrain.txt'
         )-> None:
         """
         Génère un dataset pour la reconnaissance de texte à partir des annotations existantes.
@@ -212,7 +212,7 @@ class detDataset(paddleDataset):
                                             ou "rec_train.txt" si `traintestsplit` est défini.
             traintestsplit (float | None, optional): Proportion (0-1) des données pour l'entraînement.
                                                     Si None, aucun split n'est effectué.
-            val_txt_name (str, optional): Nom du fichier texte de validation. Par défaut 'rec_val.txt'.
+            val_txt_name (str, optional): Nom du fichier texte de validation. Par défaut `recTrain.txt`.
 
         Raises:
             ValueError: Si `traintestsplit` est hors de [0, 1].
@@ -262,7 +262,7 @@ class detDataset(paddleDataset):
                 f.write('\n'.join(rec_text_list))
         else: 
             shuffle(rec_text_list)
-            with open(join(dirname(self.path), "rec_train.txt" if not txt_name else txt_name), 'w', encoding="utf-8") as f:
+            with open(join(dirname(self.path), "recTest.txt" if not txt_name else txt_name), 'w', encoding="utf-8") as f:
                 f.write('\n'.join(rec_text_list[:int(traintestsplit*len(rec_text_list))]))
 
             with open(join(dirname(self.path),val_txt_name), 'w', encoding="utf-8") as f:
