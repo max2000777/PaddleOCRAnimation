@@ -70,7 +70,11 @@ class paddleDataset:
 
         return missing
     
-    def display_image(self, index: int) -> PILImage.Image:
+    def display_image(self, index: int | str) -> PILImage.Image:
+        if isinstance(index, str):
+            if not index in self.name_dict.keys():
+                raise ValueError(f'The image name {index} is not in the dataset')
+            index = self.name_dict[index]
         if index <0 or index > self.length-1:
             raise IndexError(f"Out of range (dataset is length {self.length})")
         image_path = self[index]['image_path']
