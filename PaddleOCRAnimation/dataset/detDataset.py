@@ -196,6 +196,48 @@ class detDataset(paddleDataset):
 
         return base
     
+    def verify_dataset(self):
+        def is_valid_box_structure(x: list[list]) -> bool:
+            return (
+                isinstance(x, list)
+                and len(x) == 4
+                and all(
+                    isinstance(sub, list)
+                    and len(sub) == 2
+                    and all(isinstance(i, int) for i in sub)
+                    for sub in x
+                )
+            )
+        
+        def is_valid_box_content(x: list[list], size: tuple[int, int]) -> bool:
+            width, height = size
+            for (px, py) in x:
+                if not (0 <= px <= width and 0 <= py <= height):
+                    return False
+            return True
+
+        missing_images = self.verify_images()
+        if len(missing_images)>0 :
+            #some images are missing
+            raise FileNotFoundError(f"{len(missing_images)} images are missing")
+        
+        for i, line in enumerate(self):
+            if 'annotations' not in line.keys() or 'image_path' not in line.keys():
+                raise ValueError(f'each line should have the keys annotations, image_path. the {i} line doesnt')
+            image = PILImage.open(join(dirname(self.path), line['image_path']))
+
+            for y, annotation in enumerate(line['annotations']):
+                if 'transcription' not in annotation.keys() or 'points' not in annotation.keys():
+                    raise ValueError('Each annotation should have the keys transcription, points. '
+                                     f'The {y} annotation of the {i} line doesnt')
+                
+                if not is_valid_box_structure(annotation['points']):
+                    raise ValueError('Each box sould be a list of 4 list each with 2 int. '
+                                     f'The {y} box of the {i} line is not')
+                
+                if not is_valid_box_content(annotation['points'], image.size):
+                    raise ValueError
+    
     def to_rec_dataset(
             self, foldername: str | None = None,
             txt_name: str | None = None, 
