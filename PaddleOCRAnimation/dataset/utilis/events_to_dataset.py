@@ -3,9 +3,10 @@ from ...video.sub.RendererClean import Renderer, Context
 import random
 from pathlib import Path
 from os.path import join, relpath
-from ...video.classes import dataset_image, eventWithPilList
+from ...video.classes import dataset_image, eventWithPilList, FrameToBoxEvent
 from .disturb import disturb_eventWithPil
 import logging 
+from copy import deepcopy
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +39,34 @@ def big_images_to_dataset(
         events_with_pil:eventWithPilList,
         dataset_path: str, image_save_path: str,
         vid_name: str, sub_id: int, timestamp: float,
-        p:float = 0.1
+        p:float = 0.2
     ) -> list[dataset_image]:
-    if random.random() > 1 - (1 - p)**(len(events_with_pil) * 1.3):
+    """Generates and saves a dataset image from subtitle events.
+
+    Combines multiple subtitle events with their transparent PIL images,
+    optionally rescales the final image and bounding boxes, then saves it
+    to disk for dataset creation.
+
+    Args:
+        events_with_pil (eventWithPilList): List of subtitle events with PIL images.
+        dataset_path (str): Root dataset directory.
+        image_save_path (str): Directory where the generated image will be saved.
+        vid_name (str): Video name identifier.
+        sub_id (int): Subtitle sequence ID.
+        timestamp (float): Video timestamp of the events.
+        p (float, optional): Base probability of skipping an image; the more events 
+            in the frame, the lower the chance of being skipped. Defaults to 0.2.
+
+    Returns:
+        list[dataset_image]: List containing one dataset image entry or empty if skipped.
+    """
+    if random.random() > 1 - (1 - p)**(len(events_with_pil) * 1.5):
+        # more event in the frame = more chance
         return []
     
     save_path = join(image_save_path, f'{vid_name}_s{sub_id}_t{timestamp}_full.png')
 
-    return_list = []
+    return_list: list[FrameToBoxEvent] = []
     for event in events_with_pil:
         return_list += event.events
     

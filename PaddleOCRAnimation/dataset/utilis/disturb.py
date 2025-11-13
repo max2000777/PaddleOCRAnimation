@@ -16,23 +16,26 @@ logger = logging.getLogger(__name__)
 
 def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
                              mean_band_size_perc:float = 0.2,
-                             p_pixelize: float = 0.25
+                             p_pixelize: float = 0.25,
+                             p_change_rez: float = 0.15,
                             ) -> eventWithPil:
     """
-    Randomly adds transparent padding around an event image.
+    Applies random visual disturbances to an event image to increase dataset variability.
 
-    With probability `p_padding` for each side (left, top, right, bottom),
-    a random padding width is sampled from a Gaussian distribution
-    centered at `mean_band_size_perc` of the corresponding image dimension.
-    The padding is applied via `event.add_padding()`.
+    This function can:
+      - Add random transparent padding around the image (per side) with probability `p_padding`.
+      - Pixelize the image (reduce quality without resizing) with probability `p_pixelize`.
+      - Randomly rescale the image and corresponding bounding boxes with probability `p_change_rez`.
 
     Args:
         events (eventWithPil): The event containing the image, text, and boxes.
-        p_padding (float, optional): Probability of adding padding on each side. Defaults to `0.15`.
-        mean_band_size_perc (float, optional): Mean relative padding size per side. Defaults to `0.2`.
+        p_padding (float, optional): Probability of adding transparent padding on each side. Defaults to 0.15.
+        mean_band_size_perc (float, optional): Mean relative padding size per side. Defaults to 0.2.
+        p_pixelize (float, optional): Probability to pixelize the image (without changing its resolution). Defaults to 0.25.
+        p_change_rez (float, optional): Probability to randomly change the image resolution and resize boxes accordingly. Defaults to 0.15.
 
     Returns:
-        eventWithPil: The modified event, potentially with added padding.
+        eventWithPil: The modified event, possibly padded, pixelized, or resized.
     """
     def add_transparent_padding(
             events: eventWithPil,
@@ -53,10 +56,31 @@ def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
         events.add_padding(padding=padding)
         return events
     
+    def change_rez(
+            events: eventWithPil,
+            p: float = 0.1
+        ) -> eventWithPil:
+        if random.random() > p:
+            return events
+        
+        ratio = max(0.3, random.gauss(mu= 0.65, sigma=0.12))
+        w, h = events.image.size
+        w, h = int(w*ratio), int(h * ratio)
+        events.image = events.image.resize(size=(w, h))
+        for i, event in enumerate(events.events):
+            box = event.Boxes
+            box.resize(scale=ratio)
+            events.events[i].Boxes = box
+        
+        return events
+
+    
     events = add_transparent_padding(events=events, p_padding=p_padding, 
                                      mean_band_size_perc=mean_band_size_perc)
     if random.random() < p_pixelize:
         events.image = pixelate_image(events.image)
+    
+    events = change_rez(events=events, p=p_change_rez)
     
     return events
 
@@ -275,6 +299,47 @@ def salt_and_pepper(img, amount=0.003):
     img = Image.fromarray(np_img)
     return img.convert('RGBA') if img.mode == 'RGBA' else img
 
+@overload
+def change_rez_image(img:Image.Image, event_list: None =None)-> Image.Image:
+    ...
+@overload
+def change_rez_image(img:Image.Image, event_list: eventWithPilList)-> tuple[Image.Image, eventWithPilList]:
+    ...
+def change_rez_image(
+        img:Image.Image, event_list: eventWithPilList | None =None
+    ) -> tuple[Image.Image, eventWithPilList] | Image.Image:
+    """Randomly rescales an image and its associated events.
+
+    A random scaling ratio (sampled from a Gaussian distribution centered at 0.65)
+    is applied to the image. If `event_list` is provided, all event images and
+    their bounding boxes are resized by the same ratio.
+
+    Args:
+        img (Image.Image): The base PIL image to resize.
+        event_list (eventWithPilList | None, optional): Optional list of events
+            whose images and boxes will also be resized. Defaults to None.
+
+    Returns:
+        Image.Image | tuple[Image.Image, eventWithPilList]:
+            The resized image alone, or the image with its updated event list.
+    """
+    w, h = img.size
+    ratio = max(0.3, random.gauss(mu= 0.65, sigma=0.12))
+    w, h = int(w*ratio), int(h * ratio)
+    img = img.resize(size=(w, h))
+
+    if event_list:
+        for i, event in enumerate(event_list):
+            w, h = event.image.size
+            w, h = int(w*ratio), int(h*ratio)
+            event_list[i].image = event.image.resize(size=(w, h))
+
+            for unique_event in event.events:
+                unique_event.Boxes.resize(scale=ratio)
+        
+        return img, event_list
+    
+    return img
 
 
 @overload
@@ -315,11 +380,18 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
 
     if random.random() < 0.10:
         img = jpeg_compress(img, quality=random.randint(15, 36))
+
     elif random.random() < 0.3:
         if event_list is None:
             img = pixelate_image(img=img)
         else:
             img, event_list = pixelate_image(img=img, event_list=event_list)
+    
+    elif random.random() < 0.4:
+        if event_list is None:
+            img=change_rez_image(img=img)
+        else:
+            img, event_list = change_rez_image(img=img, event_list=event_list)
 
     if random.random() < 0.1:
         img = salt_and_pepper(img).convert('RGBA') if img.mode == 'RGBA' else salt_and_pepper(img)
@@ -329,7 +401,7 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         else:
             img, event_list = add_black_band(img=img, event_list=event_list)
     
-
+    
     
     if event_list is None:
         return img
@@ -445,8 +517,10 @@ def disturb_text(
                 text = text+'.'
                 event.text = text
         return event 
+
     if isinstance(timestamp, float) or isinstance(timestamp, int):
         timestamp = timedelta(seconds=timestamp)
+
     for i, event in enumerate(event_list):
         event_list[i] = add_three_dots(
             event,

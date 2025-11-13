@@ -97,6 +97,21 @@ class Box:
         if self.bas_droit[1] <= self.haut_droit[1]:
                 self.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
 
+    def resize(self, scale: float):
+        """Resizes the box coordinates by a given scale factor.
+
+        Args:
+            scale (float): Factor by which to scale the box coordinates.
+        """
+        def rescale_point(pt, scale):
+            return [int(pt[0] * scale), int(pt[1] * scale)]
+
+        self.haut_gauche = rescale_point(self.haut_gauche, scale=scale)
+        self.haut_droit  = rescale_point(self.haut_droit, scale=scale)
+        self.bas_droit   = rescale_point(self.bas_droit, scale=scale)
+        self.bas_gauche  = rescale_point(self.bas_gauche, scale=scale)
+        self.full_box = [self.haut_gauche, self.haut_droit, self.bas_droit, self.bas_gauche]
+
     def to_pil(
             self, size: tuple[int, int],
             show_only_borders: bool = False,
