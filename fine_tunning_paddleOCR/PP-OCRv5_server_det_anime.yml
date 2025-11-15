@@ -7,9 +7,7 @@ Global:
   print_batch_step: 10
   save_model_dir: ../PaddleOCR_output/PP-OCRv5_server_det_anime
   save_epoch_step: 20
-  eval_batch_step:
-  - 3000
-  - 2000
+  eval_batch_step: 3000
   cal_metric_during_train: false
   checkpoints:
   pretrained_model: https://paddle-model-ecology.bj.bcebos.com/paddlex/official_pretrained_model/PPHGNetV2_B4_ocr_det.pdparams
@@ -60,7 +58,7 @@ Optimizer:
   beta2: 0.999
   lr:
     name: Cosine
-    learning_rate: 0.001 #(8*8c)
+    learning_rate: 0.00001 # https://www.paddleocr.ai/v2.9/en/ppocr/model_train/finetune.html?utm_source=chatgpt.com#23-traini
     warmup_epoch: 2
   regularizer:
     name: L2
@@ -71,7 +69,7 @@ PostProcess:
   thresh: 0.3
   box_thresh: 0.6
   max_candidates: 1000
-  unclip_ratio: 1.5
+  unclip_ratio: 2.5
 
 Metric:
   name: DetMetric
