@@ -16,13 +16,15 @@ def small_images_to_dataset(
         dataset_path: str, image_save_path: str,
         ctx: Context, multiline: bool = True,
         sub_id: int = 0,
-        p: float = 0.15
+        p: float = 0.15,
+        padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.005, 0.1, 0.005, 0.1),
 ) -> list[dataset_image]:
     vid_name = Path(video.path).stem
     if random.random()>p:
         return []
     
-    events_with_pil = video.get_subtitle_boxes(timestamp=timestamp, renderer=r, context=ctx, piste=sub_id, multiline = multiline, SIZE=(0,0))
+    events_with_pil = video.get_subtitle_boxes(timestamp=timestamp, renderer=r, context=ctx, 
+                                               piste=sub_id, multiline = multiline, SIZE=(0,0), padding=padding)
 
     return_list = []
     for i, event in enumerate(events_with_pil):

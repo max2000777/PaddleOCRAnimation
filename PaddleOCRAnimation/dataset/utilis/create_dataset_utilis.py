@@ -161,6 +161,7 @@ def timing_to_dataset(
         timing_sec:float, vid:Video, selected_sub_id: int,
         no_text_image_save_path: str | Path, dataset_path: str | Path,
         image_save_path: str | Path, multiline: bool = False,
+        padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.005, 0.1, 0.005, 0.1),
     )-> list[dataset_image]:
     """
     Generates one or more dataset images for a specific video timestamp.
@@ -181,6 +182,7 @@ def timing_to_dataset(
         dataset_path (str | Path): Root dataset directory (used for relative paths).
         image_save_path (str | Path): Directory for frames with subtitles.
         multiline (bool, optional): Whether multiline subtitle rendering is allowed (a sub is an event). Defaults to `False`, a line is an event.
+        padding (tuple, optional): TODO
 
     Returns:
         list[dataset_image]: A list of generated dataset images, including the
@@ -220,7 +222,8 @@ def timing_to_dataset(
                 vid.docs[selected_sub_id].styles[i] = style_transform(style=style)
         vid.docs[selected_sub_id].events = disturb_text(event_list=vid.docs[selected_sub_id].events, timestamp=timing_sec)
     
-    events_with_pil = vid.get_subtitle_boxes(timestamp=timing_sec, renderer=r, context=ctx, piste=selected_sub_id, multiline = multiline)
+    events_with_pil = vid.get_subtitle_boxes(timestamp=timing_sec, renderer=r, context=ctx, 
+                                             piste=selected_sub_id, multiline = multiline, padding=padding)
 
     return_event_list = []
     
@@ -292,6 +295,7 @@ def video_to_dataset(
         dataset_path: str | Path,
         save_format: Literal['PaddleOCR'] = 'PaddleOCR',
         preferd_sub_language: str = 'fre', p_timing: float = 0.005,
+        padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.01, 0.1, 0.01, 0.1),
         multiline: bool = False
 ) -> tuple[int, int]:
     """
@@ -335,6 +339,8 @@ def video_to_dataset(
             Probability parameter controlling the number of selected timings over the
             video duration. Roughly corresponds to a sampling ratio.
             Defaults to `0.005`.
+        padding (tuple, optional):
+            TODO
         multiline (bool, optional):
             If one event (detection box) can contain multiple text lines. If `False`, one box 
             will contain maximum one line. Default to `False`.
@@ -413,7 +419,8 @@ def video_to_dataset(
             image_save_path= image_save_path,
             no_text_image_save_path=no_text_image_save_path,
             dataset_path = dataset_path,
-            multiline=multiline
+            multiline=multiline,
+            padding=padding
         ) for timing in timings]
     
     n_text_image, n_no_text_image = 0, 0

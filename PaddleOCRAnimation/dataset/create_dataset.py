@@ -113,6 +113,7 @@ def create_ocr_dataset(
         attachement_path: str | Path | None = None,
         multiline: bool = False,
         p_timing: float = 0.005,
+        padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.005, 0.1, 0.005, 0.1),
         logging_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] = 'INFO',
         ass_log_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] | None = 'DEBUG',
     ) -> None:
@@ -166,6 +167,8 @@ def create_ocr_dataset(
             Probability parameter controlling the number of selected timings over one
             video duration. Roughly corresponds to a sampling ratio.
             Defaults to `0.005`.
+        padding (tuple):
+            TODO
         logging_level (Literal, optional):
             The logging level of the log file. By default `INFO`.
         ass_log_level (Literal | None): 
@@ -260,6 +263,7 @@ def create_ocr_dataset(
             save_format=save_format,
             multiline=multiline,
             p_timing=p_timing
+            padding= padding
         )
         n_text_image += text
         n_no_text_image += no_text
