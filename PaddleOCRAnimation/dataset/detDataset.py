@@ -242,7 +242,7 @@ class detDataset(paddleDataset):
             self, foldername: str | None = None,
             txt_name: str | None = None, 
             traintestsplit: float | None = None,
-            val_txt_name: str = 'recTrain.txt'
+            val_txt_name: str = 'recTest.txt'
         )-> None:
         """
         Génère un dataset pour la reconnaissance de texte à partir des annotations existantes.
@@ -300,15 +300,20 @@ class detDataset(paddleDataset):
 
                 text = annotation['transcription']
                 text = re.sub(r'\{.*?\}', '', text)
-                rec_text_list.append(f"{Path(rel_path).as_posix()}\t{text}")
-
-                crop.save(join(dirname(self.path), rel_path))
+                
+                try:
+                    crop.save(join(dirname(self.path), rel_path))
+                except SystemError as e:
+                    print(f'error for {basename(image["image_path"])}: {e}')
+                    continue
+                else:
+                    rec_text_list.append(f"{Path(rel_path).as_posix()}\t{text}")
         if traintestsplit is None:
             with open(join(dirname(self.path), "rec.txt" if not txt_name else txt_name), 'w', encoding="utf-8") as f:
                 f.write('\n'.join(rec_text_list))
         else: 
             shuffle(rec_text_list)
-            with open(join(dirname(self.path), "recTest.txt" if not txt_name else txt_name), 'w', encoding="utf-8") as f:
+            with open(join(dirname(self.path), "recTrain.txt" if not txt_name else txt_name), 'w', encoding="utf-8") as f:
                 f.write('\n'.join(rec_text_list[:int(traintestsplit*len(rec_text_list))]))
 
             with open(join(dirname(self.path),val_txt_name), 'w', encoding="utf-8") as f:
