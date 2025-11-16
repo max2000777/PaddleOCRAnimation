@@ -58,7 +58,7 @@ Optimizer:
   beta2: 0.999
   lr:
     name: Cosine
-    learning_rate: 0.00001 # https://www.paddleocr.ai/v2.9/en/ppocr/model_train/finetune.html?utm_source=chatgpt.com#23-traini
+    learning_rate: 0.0001 # https://www.paddleocr.ai/v2.9/en/ppocr/model_train/finetune.html
     warmup_epoch: 2
   regularizer:
     name: L2
@@ -69,7 +69,7 @@ PostProcess:
   thresh: 0.3
   box_thresh: 0.6
   max_candidates: 1000
-  unclip_ratio: 2.5
+  unclip_ratio: 1.5
 
 Metric:
   name: DetMetric
@@ -110,12 +110,12 @@ Train:
         max_tries: 50
         keep_ratio: true
     - MakeBorderMap:
-        shrink_ratio: 0.4
-        thresh_min: 0.3
-        thresh_max: 0.7
+        shrink_ratio: 0.5
+        thresh_min: 0.4
+        thresh_max: 0.8
         total_epoch: *epoch_num
     - MakeShrinkMap:
-        shrink_ratio: 0.4
+        shrink_ratio: 0.5
         min_text_size: 8
         total_epoch: *epoch_num
     - NormalizeImage:
