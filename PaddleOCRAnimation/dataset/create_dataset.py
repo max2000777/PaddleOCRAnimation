@@ -244,7 +244,7 @@ def create_ocr_dataset(
 
     dataset_metadata_before(dataset_path=dataset_path, main_mkv_path=main_mkv_path,
                             preferd_sub_language=preferd_sub_language, save_format=save_format,
-                            multiline=multiline)
+                            multiline=multiline, padding = padding)
     
     start_time = datetime.now()
 
@@ -262,7 +262,7 @@ def create_ocr_dataset(
             image_save_path=image_save_path,
             save_format=save_format,
             multiline=multiline,
-            p_timing=p_timing
+            p_timing=p_timing,
             padding= padding
         )
         n_text_image += text

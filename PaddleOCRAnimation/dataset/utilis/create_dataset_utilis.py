@@ -23,7 +23,8 @@ def dataset_metadata_before(
         main_mkv_path: str,
         preferd_sub_language: str,
         save_format: str,
-        multiline: bool 
+        multiline: bool,
+        padding: tuple
 
     ) -> None:
     """metadata logging before processing
@@ -33,6 +34,7 @@ def dataset_metadata_before(
         f.write(f'Date: {datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")}\n')
         f.write(f'Main MKV path: {Path(main_mkv_path).as_posix()}\n')
         f.write(f'Sub language: {preferd_sub_language}\n')
+        f.write(f'Padding: {padding}\n')
         f.write(f'Multiline: {multiline}\n')
         f.write(f'Save format: {save_format}\n')
 
