@@ -22,6 +22,7 @@ from ..dataset.utilis.disturb import disturb_image, style_transform
 from .classes import eventWithPilList, eventWithPil, FrameToBoxEvent, FrameToBoxResult, SubTrackInfo
 from ..video.utilis import detect_text_line_boxes
 from .sub.box import Box
+from warnings import warn
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,8 @@ class Video:
         """
         if which("ffprobe") is None:
             raise SystemError("ffprobe n'est pas installé ou n'est pas dans le PATH")
-        if not cheminVersMKV.endswith('.mkv'):
-            raise ValueError(f'Please provide a path to a mkv file')
+        # if not cheminVersMKV.endswith('.mkv'):
+        #     raise ValueError(f'Please provide a path to a mkv file')
         if isinstance(cheminVersMKV, Path):
             cheminVersMKV = str(cheminVersMKV)
         if not exists(cheminVersMKV):
@@ -744,8 +745,8 @@ class Video:
             if not exists(path_to_mkv):
                 raise FileNotFoundError(f"Le fichier {path_to_mkv} n'existe pas")
             elif not path_to_mkv.lower().endswith('.mkv'):
-                raise ValueError(
-                    f"Le fichier {path_to_mkv} existe mais ce n'est pas un fichier mkv"
+                warn(
+                    f"The file {path_to_mkv} exists but is not a mkv file"
                     )
 
         ffprobe_results = cls.recup_infos_MKV(path_to_mkv)
