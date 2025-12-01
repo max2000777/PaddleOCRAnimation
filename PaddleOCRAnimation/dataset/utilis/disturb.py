@@ -10,6 +10,8 @@ import matplotlib.font_manager as fm
 from datetime import timedelta
 import re
 import logging
+from os.path import exists
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -437,7 +439,7 @@ def style_transform(style: line.Style) -> line.Style:
         "Symbol", "Segoe Fluent Icons", "Wingdings 3"
     }
     style = deepcopy(style)
-    if random.random() < 0.30:
+    if random.random() < 0.40:
         nom_polices = {
             fm.FontProperties(fname=font).get_name(): font
             for font in fm.findSystemFonts(fontpaths=None, fontext='ttf')
@@ -518,9 +520,35 @@ def disturb_text(
             elif random.random() < p_point_after and not text.endswith(("...", "…", "!", "?", '.', ",")):
                 text = text+'.'
                 event.text = text
-        return event 
+        return event
     
-    def keep_one_word(event: line.Dialogue, p: float = 0.6) -> line.Dialogue:
+    def add_one_word(
+            event:line.Dialogue, p: float = 0.4,
+            char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë', 'û', 'ü']
+        ) -> line.Dialogue:
+        def replace_random_space(s: str, replacement: str) -> str:
+            space_positions = [i for i, ch in enumerate(s) if ch == " "]
+            if not space_positions:
+                return s
+            idx = random.choice(space_positions)
+            return s[:idx] + replacement + s[idx+1:]
+
+        if random.random() > p :
+            return event
+        if not exists('wordfreq.parquet'):
+            raise FileNotFoundError('The file wordfreq.parquet does not exists, it is probably an import error')
+        spe_char = random.choice(char_list)
+        df = pd.read_excel('wordfreq.parquet')
+        df = df[df['ortho'].str.contains(spe_char, na=False)][['ortho','freqfilms2']]
+        if len(df) <1:
+            return event
+        mot = df.sample(n=1, weights='freqfilms2', replace=True)['ortho'].iloc[0]
+        event.text = replace_random_space(s=event.text, replacement=' '+mot.strip()+' ')
+        logger.debug(f"added {mot} in {event.text}")
+        return event
+
+    
+    def keep_one_word(event: line.Dialogue, p: float = 0.3) -> line.Dialogue:
         """replace the event text by one word
         """
         if random.random() < p:
@@ -534,6 +562,9 @@ def disturb_text(
         timestamp = timedelta(seconds=timestamp)
 
     for i, event in enumerate(event_list):
+        event[i]= add_one_word(
+            event
+        )
         event_list[i] = keep_one_word(
             event
         )
