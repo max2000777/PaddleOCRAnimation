@@ -370,6 +370,7 @@ class dataset_image:
             if remove_overrides:
                 l_text = len(text)
                 text = re.sub(r'\{.*?\}', '', text)
+                text = re.sub(r'(?<!\.)\.{3}(?!\.)', '…', text, flags=re.MULTILINE)
                 if prevent_karaoke and l_text > 15 and len(text) < 3:
                     # karaoke a often 99% overrides and 1 or 2 real letters
                     continue
