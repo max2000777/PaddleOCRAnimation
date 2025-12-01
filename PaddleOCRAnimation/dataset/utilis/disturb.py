@@ -475,20 +475,22 @@ def disturb_text(
         p_three_dots_after: float = 0.07,
         timestamp: float | timedelta | None = None
         ) -> section.EventsSection:
-    """Randomly applies text disturbances to subtitle events to increase dataset robustness.
+    """Applies simple random text perturbations to subtitle dialogue events (in place).
 
-    Currently, it may add ellipses ("...") before or after dialogue lines with given
-    probabilities. Future versions may include other modifications (e.g., typos,
-    truncations, casing changes).
+    Current perturbations:
+      - With probability p=0.6, replaces the event text by a single randomly chosen word.
+      - Optionally adds ellipses ("..."/"…") before/after the text, and sometimes a final "."
+        (ellipsis insertion is applied only if the event is active at `timestamp`, when provided).
 
     Args:
-        event_list (section.EventsSection): List of dialogue events to modify.
-        p_three_dots_before (float, optional): Probability of adding "..." before text. Defaults to 0.04.
-        p_three_dots_after (float, optional): Probability of adding "..." after text. Defaults to 0.07.
-        timestamp (float | timedelta | None, optional): Optional time filter; only events active at this time are modified. Defaults to None.
+        event_list: EventsSection containing Dialogue events.
+        p_three_dots_before: Probability to prepend ellipses.
+        p_three_dots_after: Probability to append ellipses.
+        timestamp: If given (seconds or timedelta), only events active at this time may receive
+            ellipses (word reduction is currently unconditional).
 
     Returns:
-        section.EventsSection: The modified EventsSection (same object, changed in place).
+        The same EventsSection object, modified in place.
     """
     def add_three_dots(
             event: line.Dialogue,
@@ -517,11 +519,24 @@ def disturb_text(
                 text = text+'.'
                 event.text = text
         return event 
+    
+    def keep_one_word(event: line.Dialogue, p: float = 0.6) -> line.Dialogue:
+        """replace the event text by one word
+        """
+        if random.random() < p:
+            word_list = event.text.replace("\n", " ").split(" ")
+            word = random.choice(word_list)
+            event.text = word
+        return event
 
     if isinstance(timestamp, float) or isinstance(timestamp, int):
         timestamp = timedelta(seconds=timestamp)
 
     for i, event in enumerate(event_list):
+        event_list[i] = keep_one_word(
+            event
+        )
+
         event_list[i] = add_three_dots(
             event,
             p_three_dots_after=p_three_dots_after,
