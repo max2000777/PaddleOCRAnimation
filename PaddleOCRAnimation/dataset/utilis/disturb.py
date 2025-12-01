@@ -524,7 +524,8 @@ def disturb_text(
         """replace the event text by one word
         """
         if random.random() < p:
-            word_list = event.text.replace("\n", " ").split(" ")
+            text = re.sub(r'\{.*?\}', '', event.text)
+            word_list = text.replace("\n", " ").split(" ")
             word = random.choice(word_list)
             event.text = word
         return event
