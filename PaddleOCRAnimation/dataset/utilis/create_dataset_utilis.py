@@ -47,7 +47,7 @@ def find_dominant_style(
     if boosted_style in style_counts:
         style_counts[boosted_style] *= multiplier
     dom_style  = max(style_counts, key=style_counts.get)
-    logger.debug(f'The dominant style was {dom_style}, {style_counts['dom_style']} ev')
+    logger.debug(f'The dominant style was {dom_style}, {style_counts[dom_style]} ev')
     return dom_style
 
         

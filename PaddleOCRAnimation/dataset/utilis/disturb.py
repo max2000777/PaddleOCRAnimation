@@ -585,7 +585,7 @@ def disturb_text(
             code = code+sep+"".join(random.choice(digit) for _ in range(n_number))
         
         if random.random()< p_text:
-            t= random.choices(['€', '$', '%', 'h', 's', '¥'], weights=[20, 10, 30, 20, 15, 10], k=1)[0]
+            t= random.choices(['€', '$', '%', 'h', 's', '¥'], weights=[20, 10, 35, 20, 15, 10], k=1)[0]
             code +=t
         event.text = replace_random_space(s=event.text, replacement=' '+code+' ')
         logger.debug(f'added {code} to {event.text}')
