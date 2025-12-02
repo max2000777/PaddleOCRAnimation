@@ -551,21 +551,36 @@ def disturb_text(
         logger.debug(f"added {mot} in {event.text}")
         return event
     
-    def add_spe_char(
-            event: line.Dialogue, p: float = 0.15,
+    def add_any_spe_char(
+            event: line.Dialogue, p: float = 0.3,
     ) -> line.Dialogue:
         if random.random() >p:
             return event
         dic = [
-            '_', '6', '1', '.', 'B', '2', 'à', '3', 'R', '4', 'U', 'E', 'A', '5', 'P', 'O', 'S', 'T', 'D', '7',
-            'Z', '8', 'I', 'N', 'L', 'G', 'M', 'H', '0', 'J', 'K', '-', '–', '—', '9', 'F', 'C', 'V', 'é', 'X',
-            "'", 'Q', ':', '=', 'è', 'Œ', 'É', 'W', 'Ç', 'È', 'Ô', 'ô', '€', 'À', 'Û', 'Ê', '°', 'ê', 'î', '*',
-            'Â', '"', ',', '’', '…', 'â', '%', 'û', 'ç', 'ü', '?', '!', ';', 'ö', '(', ')', 'ï', 'º', 'ó', 'ø',
-            'å', '+', '™', 'á', 'Ë', '<', '²', 'Á', 'Î', 'Ï', '&', '@', 'œ', 'ε', 'Ü', 'ë', '[', ']', 'í', 'ò',
-            'Ö', 'ä', 'ß', '«', '»', 'ú', 'ñ', 'æ', 'µ', '³', 'Å', '$', '#'
+            '_', '6', '1', '.', 'S', 'T', 'D', '7', 'Ê', '°', 'ê', 'î', '*', 'í', 'ò',
+            'Z', 'I', 'N', 'L', 'G', 'M', 'H', 'J', 'K', '-', '–', '—', 'V', 'é', 'X',
+            "'", 'Q', ':', '=', 'è', 'Œ', 'É', 'W', 'Ç', 'È', 'Ô', 'ô', '€', 'À', 'Û',
+            'Â', '"', ',', '’', '…', 'â', '%', 'û', 'ç', 'ü', '?', '!', ';', 'ö', '(',,
+            'å', '+', '™', 'á', 'Ë', '<', '²', 'Á', 'Î', 'Ï', '&', '@', 'œ', 'ε', 'Ü', 'ë', '[', ']', 
+            'Ö', 'ä', 'ß', '«', '»', 'ú', 'ñ', 'æ', 'µ', '³', 'Å', '$', '#',  ')', 'ï', 'º', 'ó', 'ø'
         ]
         spe_char = random.choice(dic)
         event.text = replace_random_space(s=event.text, replacement=' '+spe_char+' ')
+        return event
+    
+    def add_prio_spe_char(
+            event: line.Dialogue, p: float = 0.2,
+    ):
+        if random.random()>p:
+            return event
+        
+        rom_num = random.choices(['I', 'II', 'III', 'IV', 'V', 'VI', 'VIII'], weights=[0.22, 0.20, 0.17, 0.13, 0.10, 0.08, 0.06], k=1)[0]
+        prio_list = [
+            ' “', '” ', ' W', ' K', ' Y', '_', rom_num
+        ]
+        w= [10, 10, 13, 6, 5, 10, 15]
+        spe_char= random.choices(prio_list, weights=w,k=1)[0]
+        event.text = replace_random_space(s=event.text, replacement=spe_char)
         return event
 
     def add_numbers(
@@ -592,7 +607,7 @@ def disturb_text(
         return event
 
     
-    def keep_one_word(event: line.Dialogue, p: float = 0.3) -> line.Dialogue:
+    def keep_one_word(event: line.Dialogue, p: float = 0.15) -> line.Dialogue:
         """replace the event text by one word
         """
         if random.random() < p:
@@ -612,7 +627,10 @@ def disturb_text(
         event_list[i]= add_one_spe_char_word(
             event
         )
-        event_list[i] = add_spe_char(
+        event_list[i] = add_any_spe_char(
+            event
+        )
+        event_list[i] = add_prio_spe_char(
             event
         )
         event_list[i] = keep_one_word(
