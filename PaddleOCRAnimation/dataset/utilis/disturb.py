@@ -396,7 +396,7 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         else:
             img, event_list = pixelate_image(img=img, event_list=event_list)
     
-    elif random.random() < 0.4:
+    elif random.random() < 0.3:
         if event_list is None:
             img=change_rez_image(img=img)
         else:
@@ -606,7 +606,7 @@ def disturb_text(
         timestamp = timedelta(seconds=timestamp)
 
     for i, event in enumerate(event_list):
-        event[i] = add_numbers(
+        event_list[i] = add_numbers(
             event
         )
         event_list[i]= add_one_spe_char_word(
