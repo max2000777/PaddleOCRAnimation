@@ -552,7 +552,7 @@ def disturb_text(
         return event
     
     def add_spe_char(
-            event: line.Dialogue, p: float = 0.1,
+            event: line.Dialogue, p: float = 0.15,
     ) -> line.Dialogue:
         if random.random() >p:
             return event

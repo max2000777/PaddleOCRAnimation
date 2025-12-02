@@ -9,14 +9,48 @@ from datetime import timedelta, datetime
 from typing import cast, Literal
 from .disturb import disturb_image, style_transform, disturb_text
 from ...video.sub.RendererClean import Context
+from ...video.sub.DocumentPlus import DocumentPlus
 from PIL import Image
 from ...video.classes import dataset_image
 from .events_to_dataset import small_images_to_dataset, big_images_to_dataset
 import sys
+from collections import Counter
 import threading
 
 
 logger = logging.getLogger(__name__)
+
+def find_dominant_style(
+    doc: DocumentPlus, 
+    boosted_style: str = "Default", 
+    multiplier: float = 1.3
+) -> str:
+    """Return the dominant style used in the ASS document.
+
+    Counts how many times each style appears in the event list and optionally
+    applies a weighting factor to a specific style before determining which one
+    is the most frequent.
+
+    Args:
+        doc (DocumentPlus): The ASS document containing events.
+        boosted_style (str, optional): The style to artificially boost in the 
+            final scoring. Defaults to "Default".
+        multiplier (float, optional): Weight applied to the boosted style. 
+            Defaults to 1.3.
+
+    Returns:
+        str: The dominant style name.
+    """
+    style_counts = Counter(event.style for event in doc.events)
+    if not style_counts:
+        raise ValueError("No events found in document")
+    if boosted_style in style_counts:
+        style_counts[boosted_style] *= multiplier
+    dom_style  = max(style_counts, key=style_counts.get)
+    logger.debug(f'The dominant style was {dom_style}, {style_counts['dom_style']} ev')
+    return dom_style
+
+        
 
 def dataset_metadata_before(
         dataset_path: str,
@@ -164,6 +198,7 @@ def timing_to_dataset(
         no_text_image_save_path: str | Path, dataset_path: str | Path,
         image_save_path: str | Path, multiline: bool = False,
         padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.005, 0.1, 0.005, 0.1),
+        dominant_style: str = 'Default'
     )-> list[dataset_image]:
     """
     Generates one or more dataset images for a specific video timestamp.
@@ -184,7 +219,8 @@ def timing_to_dataset(
         dataset_path (str | Path): Root dataset directory (used for relative paths).
         image_save_path (str | Path): Directory for frames with subtitles.
         multiline (bool, optional): Whether multiline subtitle rendering is allowed (a sub is an event). Defaults to `False`, a line is an event.
-        padding (tuple, optional): TODO
+        padding (tuple, optional): TODO,
+        dominant_style (str, optional): The default style of the document (most often the one used by most events)
 
     Returns:
         list[dataset_image]: A list of generated dataset images, including the
@@ -218,9 +254,9 @@ def timing_to_dataset(
     r.set_fonts(fontconfig_config="\0")
     r.set_all_sizes(background.size)
 
-    if n_event_in_frame == 1 and event_section[0].style == 'Default':
+    if n_event_in_frame == 1 and event_section[0].style == dominant_style:
         for i, style in enumerate(vid.docs[selected_sub_id].styles):
-            if style.name == 'Default':
+            if style.name == dominant_style:
                 vid.docs[selected_sub_id].styles[i] = style_transform(style=style)
         vid.docs[selected_sub_id].events = disturb_text(event_list=vid.docs[selected_sub_id].events, timestamp=timing_sec)
     
@@ -411,6 +447,7 @@ def video_to_dataset(
 
     executor = ThreadPoolExecutor(max_workers=50)
 
+    dom_style = find_dominant_style(vid.docs[selected_sub_id])
     
     retults = [
         executor.submit(
@@ -422,7 +459,8 @@ def video_to_dataset(
             no_text_image_save_path=no_text_image_save_path,
             dataset_path = dataset_path,
             multiline=multiline,
-            padding=padding
+            padding=padding,
+            dominant_style=dom_style,
         ) for timing in timings]
     
     n_text_image, n_no_text_image = 0, 0
