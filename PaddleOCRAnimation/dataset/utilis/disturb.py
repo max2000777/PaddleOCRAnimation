@@ -12,9 +12,16 @@ import re
 import logging
 from os.path import exists, dirname, join
 import pandas as pd
+from string import digits
 
 logger = logging.getLogger(__name__)
 
+def replace_random_space(s: str, replacement: str) -> str:
+                space_positions = [i for i, ch in enumerate(s) if ch == " "]
+                if not space_positions:
+                    return s
+                idx = random.choice(space_positions)
+                return s[:idx] + replacement + s[idx+1:]
 
 def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
                              mean_band_size_perc:float = 0.2,
@@ -522,17 +529,11 @@ def disturb_text(
                 event.text = text
         return event
     
-    def add_one_word(
+    def add_one_spe_char_word(
             event:line.Dialogue, p: float = 0.4,
             char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë', 'û', 'ü']
         ) -> line.Dialogue:
-        def replace_random_space(s: str, replacement: str) -> str:
-            space_positions = [i for i, ch in enumerate(s) if ch == " "]
-            if not space_positions:
-                return s
-            idx = random.choice(space_positions)
-            return s[:idx] + replacement + s[idx+1:]
-
+        
         if random.random() > p :
             return event
         path = dirname(__file__)
@@ -548,6 +549,46 @@ def disturb_text(
         mot = df.sample(n=1, weights='freqfilms2', replace=True)['ortho'].iloc[0]
         event.text = replace_random_space(s=event.text, replacement=' '+mot.strip()+' ')
         logger.debug(f"added {mot} in {event.text}")
+        return event
+    
+    def add_spe_char(
+            event: line.Dialogue, p: float = 0.1,
+    ) -> line.Dialogue:
+        if random.random() >p:
+            return event
+        dic = [
+            '_', '6', '1', '.', 'B', '2', 'à', '3', 'R', '4', 'U', 'E', 'A', '5', 'P', 'O', 'S', 'T', 'D', '7',
+            'Z', '8', 'I', 'N', 'L', 'G', 'M', 'H', '0', 'J', 'K', '-', '–', '—', '9', 'F', 'C', 'V', 'é', 'X',
+            "'", 'Q', ':', '=', 'è', 'Œ', 'É', 'W', 'Ç', 'È', 'Ô', 'ô', '€', 'À', 'Û', 'Ê', '°', 'ê', 'î', '*',
+            'Â', '"', ',', '’', '…', 'â', '%', 'û', 'ç', 'ü', '?', '!', ';', 'ö', '(', ')', 'ï', 'º', 'ó', 'ø',
+            'å', '+', '™', 'á', 'Ë', '<', '²', 'Á', 'Î', 'Ï', '&', '@', 'œ', 'ε', 'Ü', 'ë', '[', ']', 'í', 'ò',
+            'Ö', 'ä', 'ß', '«', '»', 'ú', 'ñ', 'æ', 'µ', '³', 'Å', '$', '#'
+        ]
+        spe_char = random.choice(dic)
+        event.text = replace_random_space(s=event.text, replacement=' '+spe_char+' ')
+        return event
+
+    def add_numbers(
+            event: line.Dialogue, p: float = 0.3,
+            p_float: float = 0.3, p_text: float = 0.4
+    ) -> line.Dialogue:
+        """train model to reco numbers"""
+        if random.random()>p:
+            return event
+        n_number = random.choices([1, 2, 3, 4], weights=[10, 17, 20, 10], k=1)[0]
+        digit = digits 
+        code = "".join(random.choice(digit) for _ in range(n_number))
+
+        if random.random() < p_float:
+            sep = random.choice([',', '.'])
+            n_number = random.choices([1, 2, 3, 4], weights=[20, 25, 7, 3], k=1)[0]
+            code = code+sep+"".join(random.choice(digit) for _ in range(n_number))
+        
+        if random.random()< p_text:
+            t= random.choices(['€', '$', '%', 'h', 's', '¥'], weights=[20, 10, 30, 20, 15, 10], k=1)[0]
+            code +=t
+        event.text = replace_random_space(s=event.text, replacement=' '+code+' ')
+        logger.debug(f'added {code} to {event.text}')
         return event
 
     
@@ -565,7 +606,13 @@ def disturb_text(
         timestamp = timedelta(seconds=timestamp)
 
     for i, event in enumerate(event_list):
-        event_list[i]= add_one_word(
+        event[i] = add_numbers(
+            event
+        )
+        event_list[i]= add_one_spe_char_word(
+            event
+        )
+        event_list[i] = add_spe_char(
             event
         )
         event_list[i] = keep_one_word(
