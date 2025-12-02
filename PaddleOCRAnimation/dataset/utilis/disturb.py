@@ -10,7 +10,7 @@ import matplotlib.font_manager as fm
 from datetime import timedelta
 import re
 import logging
-from os.path import exists
+from os.path import exists, dirname, join
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -535,10 +535,13 @@ def disturb_text(
 
         if random.random() > p :
             return event
-        if not exists('wordfreq.parquet'):
+        path = dirname(__file__)
+        logger.debug(path)
+        path = join(path, 'wordfreq.parquet')
+        if not exists(path):
             raise FileNotFoundError('The file wordfreq.parquet does not exists, it is probably an import error')
         spe_char = random.choice(char_list)
-        df = pd.read_excel('wordfreq.parquet')
+        df = pd.read_parquet(path)
         df = df[df['ortho'].str.contains(spe_char, na=False)][['ortho','freqfilms2']]
         if len(df) <1:
             return event
@@ -562,7 +565,7 @@ def disturb_text(
         timestamp = timedelta(seconds=timestamp)
 
     for i, event in enumerate(event_list):
-        event[i]= add_one_word(
+        event_list[i]= add_one_word(
             event
         )
         event_list[i] = keep_one_word(
