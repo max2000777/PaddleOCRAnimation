@@ -531,7 +531,8 @@ def disturb_text(
     
     def add_one_spe_char_word(
             event:line.Dialogue, p: float = 0.4,
-            char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë', 'û', 'ü']
+            char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë','ê', 'û', 'ü'],
+            p_maj:float = 0.3
         ) -> line.Dialogue:
         
         if random.random() > p :
@@ -542,28 +543,38 @@ def disturb_text(
         if not exists(path):
             raise FileNotFoundError('The file wordfreq.parquet does not exists, it is probably an import error')
         spe_char = random.choice(char_list)
+        # TODO : global cache
         df = pd.read_parquet(path)
-        df = df[df['ortho'].str.contains(spe_char, na=False)][['ortho','freqfilms2']]
-        if len(df) <1:
-            return event
-        mot = df.sample(n=1, weights='freqfilms2', replace=True)['ortho'].iloc[0]
+        if random.random()<p_maj:
+            df = df[df['ortho'].str.startswith(spe_char, na=False)][['ortho','freqfilms2']]
+            if df.empty:
+                return event
+            mot = df.sample(n=1, weights='freqfilms2', replace=True)['ortho'].iloc[0]
+            mot = mot.capitalize()
+        else :
+            df = df[df['ortho'].str.contains(spe_char, na=False)][['ortho','freqfilms2']]
+            if df.empty:
+                return event
+            mot = df.sample(n=1, weights='freqfilms2', replace=True)['ortho'].iloc[0]
+        
         event.text = replace_random_space(s=event.text, replacement=' '+mot.strip()+' ')
         logger.debug(f"added {mot} in {event.text}")
         return event
     
     def add_any_spe_char(
-            event: line.Dialogue, p: float = 0.3,
+            event: line.Dialogue, p: float = 0.15,
     ) -> line.Dialogue:
         if random.random() >p:
             return event
         dic = [
-            '_', '6', '1', '.', 'S', 'T', 'D', '7', 'Ê', '°', 'ê', 'î', '*', 'í', 'ò',
+            '_', '.', 'S', 'T', 'D', '7', 'Ê', '°', 'ê', 'î', '*', 'ë', '[', ']',
             'Z', 'I', 'N', 'L', 'G', 'M', 'H', 'J', 'K', '-', '–', '—', 'V', 'é', 'X',
             "'", 'Q', ':', '=', 'è', 'Œ', 'É', 'W', 'Ç', 'È', 'Ô', 'ô', '€', 'À', 'Û',
-            'Â', '"', ',', '’', '…', 'â', '%', 'û', 'ç', 'ü', '?', '!', ';', 'ö', '(',
-            'å', '+', '™', 'á', 'Ë', '<', '²', 'Á', 'Î', 'Ï', '&', '@', 'œ', 'ε', 'Ü', 'ë', '[', ']', 
-            'Ö', 'ä', 'ß', '«', '»', 'ú', 'ñ', 'æ', 'µ', '³', 'Å', '$', '#',  ')', 'ï', 'º', 'ó', 'ø'
+            'Â', '"', ',', '’', '…', 'â', '%', 'û', 'ç', '?', '!', ';', '(',
+            '+', 'Ë', '<', 'Î', 'Ï', '&', '@', 'œ', 'ü',
+            '«', '»', 'æ', 'µ', '$', '#', ')', 'ï', '²', 'ß'
         ]
+
         spe_char = random.choice(dic)
         event.text = replace_random_space(s=event.text, replacement=' '+spe_char+' ')
         return event
@@ -576,9 +587,9 @@ def disturb_text(
         
         rom_num = random.choices([' I ', ' II ', ' III ', ' IV' , ' V ', ' VI ', ' VIII ', ' XI ', ' XII'], weights=[0.1, 0.20, 0.17, 0.13, 0.10, 0.08, 0.06, 0.1, 0.1], k=1)[0]
         prio_list = [
-            ' “', '” ', ' W', ' K', ' Y', '_', rom_num
+            ' “', '” ', ' W', ' K', ' Y',' F', '_','" ',' "',  rom_num
         ]
-        w= [10, 10, 13, 6, 5, 10, 15]
+        w= [10, 10, 13, 6, 5, 13, 10, 10, 10, 15]
         spe_char= random.choices(prio_list, weights=w,k=1)[0]
         event.text = replace_random_space(s=event.text, replacement=spe_char)
         logger.debug(f'added prio spe char {spe_char} in {event.text}')
@@ -606,6 +617,22 @@ def disturb_text(
         event.text = replace_random_space(s=event.text, replacement=' '+code+' ')
         logger.debug(f'added {code} to {event.text}')
         return event
+    
+    def capitalize_a_word(event: line.Dialogue, p: float = 0.3) -> line.Dialogue:
+        """capitalize a random word of the text (not the first word)"""
+        if random.random() > p:
+            return event
+
+        words = event.text.split()
+        if len(words) <= 1:
+            return event
+
+        idx = random.randrange(1, len(words))
+        words[idx] = words[idx].capitalize()
+
+        event.text = " ".join(words)
+        return event
+
 
     
     def keep_one_word(event: line.Dialogue, p: float = 0.15) -> line.Dialogue:
@@ -622,10 +649,13 @@ def disturb_text(
         timestamp = timedelta(seconds=timestamp)
 
     for i, event in enumerate(event_list):
-        event_list[i] = add_numbers(
+        event_list[i]= add_one_spe_char_word(
             event
         )
-        event_list[i]= add_one_spe_char_word(
+        event_list[i]= capitalize_a_word(
+            event
+        )
+        event_list[i] = add_numbers(
             event
         )
         event_list[i] = add_any_spe_char(
@@ -637,7 +667,6 @@ def disturb_text(
         event_list[i] = keep_one_word(
             event
         )
-
         event_list[i] = add_three_dots(
             event,
             p_three_dots_after=p_three_dots_after,
