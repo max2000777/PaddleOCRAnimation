@@ -560,7 +560,7 @@ def disturb_text(
             '_', '6', '1', '.', 'S', 'T', 'D', '7', 'Ê', '°', 'ê', 'î', '*', 'í', 'ò',
             'Z', 'I', 'N', 'L', 'G', 'M', 'H', 'J', 'K', '-', '–', '—', 'V', 'é', 'X',
             "'", 'Q', ':', '=', 'è', 'Œ', 'É', 'W', 'Ç', 'È', 'Ô', 'ô', '€', 'À', 'Û',
-            'Â', '"', ',', '’', '…', 'â', '%', 'û', 'ç', 'ü', '?', '!', ';', 'ö', '(',,
+            'Â', '"', ',', '’', '…', 'â', '%', 'û', 'ç', 'ü', '?', '!', ';', 'ö', '(',
             'å', '+', '™', 'á', 'Ë', '<', '²', 'Á', 'Î', 'Ï', '&', '@', 'œ', 'ε', 'Ü', 'ë', '[', ']', 
             'Ö', 'ä', 'ß', '«', '»', 'ú', 'ñ', 'æ', 'µ', '³', 'Å', '$', '#',  ')', 'ï', 'º', 'ó', 'ø'
         ]
@@ -574,13 +574,14 @@ def disturb_text(
         if random.random()>p:
             return event
         
-        rom_num = random.choices(['I', 'II', 'III', 'IV', 'V', 'VI', 'VIII'], weights=[0.22, 0.20, 0.17, 0.13, 0.10, 0.08, 0.06], k=1)[0]
+        rom_num = random.choices([' I ', ' II ', ' III ', ' IV' , ' V ', ' VI ', ' VIII ', ' XI ', ' XII'], weights=[0.1, 0.20, 0.17, 0.13, 0.10, 0.08, 0.06, 0.1, 0.1], k=1)[0]
         prio_list = [
             ' “', '” ', ' W', ' K', ' Y', '_', rom_num
         ]
         w= [10, 10, 13, 6, 5, 10, 15]
         spe_char= random.choices(prio_list, weights=w,k=1)[0]
         event.text = replace_random_space(s=event.text, replacement=spe_char)
+        logger.debug(f'added prio spe char {spe_char} in {event.text}')
         return event
 
     def add_numbers(
