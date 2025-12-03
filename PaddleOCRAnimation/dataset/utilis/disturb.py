@@ -16,12 +16,14 @@ from string import digits
 
 logger = logging.getLogger(__name__)
 
-def replace_random_space(s: str, replacement: str) -> str:
-                space_positions = [i for i, ch in enumerate(s) if ch == " "]
-                if not space_positions:
-                    return s
-                idx = random.choice(space_positions)
-                return s[:idx] + replacement + s[idx+1:]
+def replace_random_space(s: str, replacement: str, chance_of_first: float = 0) -> str:
+    if random.random() < chance_of_first:
+        return replacement.strip()+" "+s
+    space_positions = [i for i, ch in enumerate(s) if ch == " "]
+    if not space_positions:
+        return s
+    idx = random.choice(space_positions)
+    return s[:idx] + replacement + s[idx+1:]
 
 def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
                              mean_band_size_perc:float = 0.2,
@@ -531,7 +533,7 @@ def disturb_text(
     
     def add_one_spe_char_word(
             event:line.Dialogue, p: float = 0.4,
-            char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë','ê', 'û', 'ü'],
+            char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë','ê', 'û', 'ü', 'à'],
             p_maj:float = 0.3
         ) -> line.Dialogue:
         
@@ -557,8 +559,8 @@ def disturb_text(
                 return event
             mot = df.sample(n=1, weights='freqfilms2', replace=True)['ortho'].iloc[0]
         
-        event.text = replace_random_space(s=event.text, replacement=' '+mot.strip()+' ')
-        logger.debug(f"added {mot} in {event.text}")
+        event.text = replace_random_space(s=event.text, replacement=' '+mot.strip()+' ', chance_of_first=0.3)
+        logger.debug(f"added spe_char_word {mot} in {event.text}")
         return event
     
     def add_any_spe_char(
@@ -585,7 +587,7 @@ def disturb_text(
         if random.random()>p:
             return event
         
-        rom_num = random.choices([' I ', ' II ', ' III ', ' IV' , ' V ', ' VI ', ' VIII ', ' XI ', ' XII'], weights=[0.1, 0.20, 0.17, 0.13, 0.10, 0.08, 0.06, 0.1, 0.1], k=1)[0]
+        rom_num = random.choices([' I ', ' II ', ' III ', ' IV' , ' V ', ' VI ', ' VIII ', ' XI ', ' XII '], weights=[0.1, 0.20, 0.17, 0.13, 0.10, 0.08, 0.06, 0.1, 0.1], k=1)[0]
         prio_list = [
             ' “', '” ', ' W', ' K', ' Y',' F', '_','" ',' "',  rom_num
         ]
