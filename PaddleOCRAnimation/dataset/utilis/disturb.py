@@ -533,7 +533,7 @@ def disturb_text(
     
     def add_one_spe_char_word(
             event:line.Dialogue, p: float = 0.4,
-            char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë','ê', 'û', 'ü', 'à'],
+            char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë','ê', 'û', 'ü', 'à', 'é', 'ç', 'è'],
             p_maj:float = 0.4
         ) -> line.Dialogue:
         
@@ -548,7 +548,7 @@ def disturb_text(
         # TODO : global cache
         df = pd.read_parquet(path)
         spe_char = random.choices(
-            char_list, weights=[15, 8, 11, 7, 10, 10, 5, 7, 8, 8] if not capital else None
+            char_list, weights=[15, 8, 11, 7, 10, 10, 5, 7, 8, 8, 0, 2, 1] if not capital else [10, 2, 10, 10, 10, 10, 10, 10, 2, 10, 15, 10, 10]
             )[0]
         df = df[df['ortho'].str.contains(spe_char, na=False)][['ortho','freqfilms2']]
         if df.empty:
