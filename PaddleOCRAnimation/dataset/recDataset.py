@@ -3,6 +3,7 @@ from os.path import exists, abspath,splitext
 import json 
 from .detDataset import paddleDataset
 import logging
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -11,9 +12,10 @@ class recDataset(paddleDataset):
         """Gestion simple d'un dataset d'images pour reconnaissance de texte avec paddle OCR."""
         @classmethod
         def make_dataset(cls, path: str, val_path: str | None = None) :
-            def load_file(path)-> list:
+            def load_file(path)-> tuple[list, Counter]:
                 with open(path, 'r', encoding='utf-8') as f:
                     images_temp = []
+                    c = Counter()
                     for line in f:
                         line = line.strip()
                         if not line:
@@ -29,18 +31,24 @@ class recDataset(paddleDataset):
                             'image_path': img_path,
                             'transcript': transcript
                         })
-                return images_temp
+                        c.update(transcript)
+                return images_temp, c
             if not exists(path):
                 raise FileNotFoundError(f"Le fichier {abspath(path)} n'existe pas")
             
             images = []
-            images += load_file(path)
+            i, c= load_file(path)
+            images +=  i
 
             if val_path is not None:
                 if not exists(val_path):
                     raise FileNotFoundError(f"Le fichier de validation {abspath(val_path)} n'existe pas")
-                images += load_file(val_path)
-            return cls(path, images)
+                i_v, c_v = load_file(val_path)
+                images += i_v
+                c += c_v
+            s = cls(path, images)
+            s.counter = c
+            return s
         
         def verify_dictionnary(self, dictionnaryPath: str, include_space: bool = True) -> set:
             if not exists(dictionnaryPath):
