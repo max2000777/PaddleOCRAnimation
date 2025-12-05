@@ -534,11 +534,12 @@ def disturb_text(
     def add_one_spe_char_word(
             event:line.Dialogue, p: float = 0.4,
             char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë','ê', 'û', 'ü', 'à'],
-            p_maj:float = 0.3
+            p_maj:float = 0.4
         ) -> line.Dialogue:
         
         if random.random() > p :
             return event
+        capital = random.random()<p_maj
         path = dirname(__file__)
         logger.debug(path)
         path = join(path, 'wordfreq.parquet')
@@ -546,13 +547,15 @@ def disturb_text(
             raise FileNotFoundError('The file wordfreq.parquet does not exists, it is probably an import error')
         # TODO : global cache
         df = pd.read_parquet(path)
-        spe_char = random.choices(char_list, weights=[15, 8, 11, 7, 10, 10, 5, 7, 8, 8])[0]
+        spe_char = random.choices(
+            char_list, weights=[15, 8, 11, 7, 10, 10, 5, 7, 8, 8] if not capital else None
+            )[0]
         df = df[df['ortho'].str.contains(spe_char, na=False)][['ortho','freqfilms2']]
         if df.empty:
             return event
         mot = df.sample(n=1, weights='freqfilms2', replace=True)['ortho'].iloc[0]
 
-        if random.random()<p_maj:
+        if capital:
             mot = mot.replace(spe_char, spe_char.capitalize())
         
         event.text = replace_random_space(s=event.text, replacement=' '+mot.strip()+' ', chance_of_first=0.3)
