@@ -588,7 +588,7 @@ def disturb_text(
         
         rom_num = random.choices([' I ', ' II ', ' III ', ' IV' , ' V ', ' VI ', ' VIII ', ' XI ', ' XII '], weights=[0.1, 0.20, 0.17, 0.13, 0.10, 0.08, 0.06, 0.1, 0.1], k=1)[0]
         prio_list = [
-            ' “', '” ', ' W', ' K', ' Y',' F', '_','" ',' "',  rom_num
+            ' “', '” ', ' W', ' K', ' Y',' F', '_','" ',' "', ' : ',   rom_num
         ]
         w= [10, 10, 13, 6, 5, 13, 10, 10, 10, 15]
         spe_char= random.choices(prio_list, weights=w,k=1)[0]
@@ -636,7 +636,7 @@ def disturb_text(
 
 
     
-    def keep_one_word(event: line.Dialogue, p: float = 0.15) -> line.Dialogue:
+    def keep_one_word(event: line.Dialogue, p: float = 0.1) -> line.Dialogue:
         """replace the event text by one word
         """
         if random.random() < p:
