@@ -4,6 +4,9 @@ import json
 from .detDataset import paddleDataset
 import logging
 from collections import Counter
+from random import shuffle
+from os.path import join
+from os import getcwd
 
 logger = logging.getLogger(__name__)
 
@@ -83,11 +86,14 @@ class recDataset(paddleDataset):
                 replace_dict (dict[str, str]): Mapping of substrings to replace
                     (keys) with their replacement values.
              """
+            c = Counter()
             for img in self.images:
                 t = img.get("transcript", "")
                 for old, new in replace_dict.items():
                     t = t.replace(old, new)
                 img["transcript"] = t
+                c.update(t)
+            self.counter = c
 
 
             
@@ -116,12 +122,45 @@ class recDataset(paddleDataset):
             print(self[index]['transcript'])
             return self.display_image(index=index)
 
-        def save_dataframe(self, path: str, data):
-            with open(path, 'w', encoding='utf-8') as f:
-                for item in data:
-                    transcriptions = [json.dumps(event, ensure_ascii=False) for event in item['transcript']]
-                    line = f"{item['image_path']}\t{item['transcript']}\n"
-                    f.write(line)
+        def save_dataset(
+                self, path: str | None = None, train_prop: float = 1,
+                train_file_name: str = 'recTrain.txt', 
+                test_file_name: str = 'recTest.txt'
+            ):
+            """Save the dataset to disk as train/test TSV files.
+
+            Shuffles the samples, then writes a train split of size
+            ``int(len(self.images) * train_prop)`` to ``train_file_name``.
+            If ``train_prop < 1``, the remaining samples are written to
+            ``test_file_name``. Each line is formatted as:
+            ``<image_path>\\t<transcript>\\n``.
+
+            Args:
+                path: Output directory. If None, uses the current working directory.
+                train_prop: Proportion of samples to put in the train split (0.0 to 1.0).
+                train_file_name: Filename for the train split.
+                test_file_name: Filename for the test split.
+            """
+            def write_data(path: str, data:list):
+                with open(path, 'w', encoding='utf-8') as f:
+                    for item in data:
+                        line = f"{item['image_path']}\t{item['transcript']}\n"
+                        f.write(line)
+            if not (0.0 <= train_prop <= 1.0):
+                raise ValueError("test_prop must be in [0, 1].")
+            path = getcwd() if not path else path
+            l= self.images.copy()
+            n_train = int(len(l) * train_prop)
+            shuffle(l)
+            write_data(join(path, train_file_name), l[:n_train])
+
+            if train_prop != 1:
+                write_data(join(path, test_file_name), l[n_train:])
+
+
+
+            
+            
 
 
 
