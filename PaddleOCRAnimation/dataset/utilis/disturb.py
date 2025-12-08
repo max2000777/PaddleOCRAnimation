@@ -220,7 +220,7 @@ def add_noise(img, mean: float =0, std: float =10):
 def pixelate_image(
         img:Image.Image,
         event_list:eventWithPilList,
-        mean_ratio: float = 0.6,
+        mean_ratio: float = 0.7,
         sigma_ratio: float = 0.15
     ) -> tuple[Image.Image, eventWithPilList]:
     ...
@@ -228,14 +228,14 @@ def pixelate_image(
 def pixelate_image(
         img:Image.Image,
         event_list: None = None,
-        mean_ratio: float = 0.6,
+        mean_ratio: float = 0.7,
         sigma_ratio: float = 0.15
     ) -> Image.Image:
     ...
 def pixelate_image(
         img:Image.Image,
         event_list:eventWithPilList | None = None,
-        mean_ratio: float = 0.5,
+        mean_ratio: float = 0.7,
         sigma_ratio: float = 0.1,
     ) -> Image.Image | tuple[Image.Image, eventWithPilList]:
     """Applies a pixelation effect to an image (and optionally its subtitle overlays).
@@ -246,7 +246,7 @@ def pixelate_image(
             List of subtitle overlay events, each with its own transparent image. 
             If provided, each overlay is pixelated with the same factor as the base image.
         mean_ratio (float, optional): Mean scaling ratio for downsampling. 
-            Lower values increase pixelation. Defaults to 0.6.
+            Lower values increase pixelation. Defaults to 0.7.
         sigma_ratio (float, optional): Standard deviation of the random scaling ratio 
             (adds randomness to pixelation strength). Defaults to 0.15.
 
@@ -335,7 +335,7 @@ def change_rez_image(
             The resized image alone, or the image with its updated event list.
     """
     w, h = img.size
-    ratio = max(0.3, random.gauss(mu= 0.65, sigma=0.12))
+    ratio = min(max(0.3, random.gauss(mu= 0.75, sigma=0.12)), 1)
     w, h = int(w*ratio), int(h * ratio)
     img = img.resize(size=(w, h))
 
@@ -532,7 +532,7 @@ def disturb_text(
         return event
     
     def add_one_spe_char_word(
-            event:line.Dialogue, p: float = 0.4,
+            event:line.Dialogue, p: float = 0.7,
             char_list: list[str] = ['â', 'ö', 'ï', 'î', 'ô', 'ë','ê', 'û', 'ü', 'à', 'é', 'ç', 'è'],
             p_maj:float = 0.4
         ) -> line.Dialogue:
