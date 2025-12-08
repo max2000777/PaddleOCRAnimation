@@ -72,7 +72,25 @@ class recDataset(paddleDataset):
             chars_not_in_dict = dataset_chars - dict_chars
 
             return chars_not_in_dict
-        
+
+        def replace(self, replace_dict: dict[str, str]):
+            """Replace substrings in each image transcript using a mapping.
+
+            Iterates over ``self.images`` and applies all (old -> new) replacements
+            from ``replace_dict`` to the ``"transcript"`` field of each item.
+
+            Args:
+                replace_dict (dict[str, str]): Mapping of substrings to replace
+                    (keys) with their replacement values.
+             """
+            for img in self.images:
+                t = img.get("transcript", "")
+                for old, new in replace_dict.items():
+                    t = t.replace(old, new)
+                img["transcript"] = t
+
+
+            
         def rescrict_length(self, min_length:int = 3, max_length: int = 45):
             """Permet d'enlever les images qui ont un texte trop court.
 
