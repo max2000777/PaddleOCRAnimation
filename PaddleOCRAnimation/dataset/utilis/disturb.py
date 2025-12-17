@@ -619,17 +619,25 @@ def disturb_text(
         logger.debug(f'added {code} to {event.text}')
         return event
     
-    def capitalize_a_word(event: line.Dialogue, p: float = 0.3) -> line.Dialogue:
-        """capitalize a random word of the text (not the first word)"""
+    def capitalize_a_word(
+            event: line.Dialogue, p: float = 0.3,
+            p_all_word: float = 0.2
+        ) -> line.Dialogue:
+        """capitalize (or upper) a random word of the text (not the first word)"""
         if random.random() > p:
             return event
+        
+        all_word = True if random.random() < p_all_word else False
 
         words = event.text.split()
         if len(words) <= 1:
             return event
-
+        
         idx = random.randrange(1, len(words))
-        words[idx] = words[idx].capitalize()
+        if all_word:
+            words[idx] = words[idx].upper()
+        else : 
+            words[idx] = words[idx].capitalize()
 
         event.text = " ".join(words)
         return event
