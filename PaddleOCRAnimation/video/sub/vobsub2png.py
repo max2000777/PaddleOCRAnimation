@@ -78,7 +78,7 @@ def vobsub2png(idx_path: str, outputdir: str | None = None):
         )
         print(result.stdout)
     except subprocess.CalledProcessError as e:
-        print("Erreur de commande :", e.stderr)
+        raise ChildProcessError(e.stderr)
 
 def vobsubpng_to_eventWithPilList(
         path_to_vobsubpng_folder: str | Path,
