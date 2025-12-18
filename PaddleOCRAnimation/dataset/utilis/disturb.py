@@ -513,7 +513,7 @@ def disturb_text(
         if not timestamp or (event.start <= timestamp <= event.end):
             text = re.sub(r'\{.*?\}', '', event.text.strip())
             if random.random() < p_three_dots_before and not text.startswith('...') and not text.startswith('…'):
-                text = '…'+text
+                text = '...'+text
                 event.text = text
 
             
@@ -523,7 +523,7 @@ def disturb_text(
                     event.text = text
                     logger.debug(f'Added three dots to text, new text : {text}')
                 else:
-                    text = text+'…'
+                    text = text+'...'
                     logger.debug(f'Added three dots to text, new text : {text}')
                     event.text = text
             elif random.random() < p_point_after and not text.endswith(("...", "…", "!", "?", '.', ",")):
