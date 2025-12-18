@@ -1,7 +1,9 @@
 from os.path import exists, dirname, join
 import json
 from paddleocr import PaddleOCR  
-
+from ..video.sub.vobsub2png import vobsub2png
+from shutil import rmtree
+from os import getcwd
 
 def paddle_api(
         input: str | list,
@@ -41,21 +43,30 @@ def ocr_vobsub(
         h = total_m // 60
 
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
+    temp_vod_dir = None
+    if json_sub.endswith('.idx'):
+        # a vobsub was provided, we need to extract first
+        temp_vod_dir = join(getcwd(), 'tmp_vobsub_dir')
+        vobsub2png(
+            idx_path=json_sub,
+            outputdir=temp_vod_dir
+        )
+        json_sub = join(temp_vod_dir, 'index.json')
 
     if not exists(json_sub):
         raise FileNotFoundError(f'The file {json_sub} does not exists')
+    
+    if not json_sub.endswith('.json'):
+        raise ValueError(f'json_sub should be a path to a .json file or a .idx file')
     
     root_path = dirname(json_sub) if not root_path else root_path
     
     with open(json_sub, 'r') as file:
         sub = json.load(file)
-    
     if 'subtitles' not in sub:
         raise ValueError(f'The key subtitles is not in the json file')
     
     sub_list: list[dict] = sub['subtitles']
-
     path_list: list[str] = []
 
     for s in sub_list:
@@ -74,6 +85,9 @@ def ocr_vobsub(
             f.write(f'{i+1}\n')
             f.write(f'{to_srt_time(line.get('start'))} --> {to_srt_time(line.get('end'))}\n')
             f.write(f'{line.get('rec_text')}\n\n')
+    
+    if temp_vod_dir is not None:
+        rmtree(temp_vod_dir)
 
     return sub_list
 
