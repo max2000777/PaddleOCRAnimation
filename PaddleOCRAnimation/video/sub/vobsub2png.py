@@ -14,6 +14,10 @@ from datetime import datetime
 from ..classes import dataset_image
 from typing import Literal
 from ..utilis import detect_text_line_boxes
+from fractions import Fraction
+import xml.etree.ElementTree as ET
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +84,103 @@ def vobsub2png(idx_path: str, outputdir: str | None = None):
     except subprocess.CalledProcessError as e:
         raise ChildProcessError(e.stderr)
 
+def xml_index_to_json_index(path_to_folder: Path | str, rounding: int = 3) -> dict | None:
+    """
+    Convert a BDSup2Sub BDN XML index (stored in a folder with PNG files) into a unified subtitle index
+    compatible with the JSON-like structure produced by vobsub2png (subtitleRS).
+
+    The function expects the input folder to contain exactly one `.xml` file (the index).
+    It parses the framerate, converts event timecodes (InTC/OutTC) to seconds, and extracts
+    each event's bitmap geometry from the `<Graphic>` node.
+
+    Args:
+        path_to_folder: Path to the folder containing the BDSup2Sub XML index.
+        rounding: Number of decimals used to round start/end times (in seconds).
+
+    Returns:
+        A dict with the following structure:
+            {"subtitles": [
+                {
+                    "start": float,     # seconds
+                    "end": float,       # seconds
+                    "force": bool,      # True if Forced="True"
+                    "position": [x, y], # top-left position in pixels
+                    "size": [w, h],     # [width, height] in pixels
+                    "path": str,        # referenced graphic filename/path from XML
+                },
+                ...
+            ]}
+
+    Raises:
+        ValueError: If the input path is not a directory, if the framerate cannot be read,
+            or if the `<Events>` section is missing.
+    """
+    def tc_to_seconds(tc: str, fps: Fraction) -> float:
+        hh, mm, ss, ff = tc.split(":")
+        hh, mm, ss, ff = int(hh), int(mm), int(ss), int(ff)
+
+        total = Fraction(hh * 3600 + mm * 60 + ss, 1) + Fraction(ff, 1) / fps
+        return float(total)
+
+    def parse_fps(root: ET.Element) -> Fraction:
+        fmt = root.find("./Description/Format")
+        if fmt is None or fmt.get("FrameRate") is None:
+            raise ValueError("Impossible de trouver Description/Format/@FrameRate dans le XML.")
+        fps_str = fmt.get("FrameRate").strip()
+
+        if fps_str == "23.976":
+            return Fraction(24000, 1001)
+
+        return Fraction(fps_str)
+    if isinstance(path_to_folder, str):
+        path_to_folder = Path(path_to_folder)
+    if not path_to_folder.is_dir():
+        raise ValueError('path_to_foler is not a directory')
+    
+    xml_file = [p for p in path_to_folder.iterdir() if p.is_file() and p.suffix.lower() == ".xml"]
+    if len(xml_file) != 1:
+        # There should be only one xml file (the index)
+        return None
+    
+    xml_file = xml_file[0]
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+
+    fps = parse_fps(root)
+    events_node = root.find("./Events")
+    if events_node is None:
+        raise ValueError("Impossible de trouver la section /BDN/Events dans le XML.")
+
+    subtitles = []
+    for ev in events_node.findall("./Event"):
+        graphic = ev.find("./Graphic")
+        if graphic is None:
+            # Event sans Graphic : on ignore ou on lève une erreur selon ton besoin
+            continue
+
+        start_s = tc_to_seconds(ev.get("InTC", "00:00:00:00"), fps)
+        end_s   = tc_to_seconds(ev.get("OutTC", "00:00:00:00"), fps)
+
+        w = int(graphic.get("Width", "0"))
+        h = int(graphic.get("Height", "0"))
+        x = int(graphic.get("X", "0"))
+        y = int(graphic.get("Y", "0"))
+
+        forced = (ev.get("Forced", "False").strip().lower() == "true")
+
+        subtitles.append({
+            "start": round(start_s, rounding),
+            "end": round(end_s, rounding),
+            "force": forced,
+            "position": [x, y],
+            "size": [w, h],
+            "path": graphic.text,
+        })
+
+    return {"subtitles": subtitles}
+
+
+
 def vobsubpng_to_eventWithPilList(
         path_to_vobsubpng_folder: str | Path,
         path_to_sub: str | Path, 
@@ -87,33 +188,46 @@ def vobsubpng_to_eventWithPilList(
         padding: tuple[int,int,int,int] = (7,2,3,1)
 )->eventWithPilList:
     """
-    Build a dataset linking VobSub PNG images to subtitle text and bounding boxes.
+    Build an image/text dataset by pairing VobSub PNG subtitles with timed subtitle events
+    and per-line bounding boxes.
 
-    This function associates each PNG subtitle image (exported via vobsub2png or similar)
-    with its corresponding subtitle event parsed from an `.ass` or `.srt` file.
-    It detects text regions on each PNG using the alpha channel and aligns them with
-    the text lines from the subtitle file.
+    The function expects a folder produced by vobsub2png (or similar) containing PNG images
+    and an `index.json`. If `index.json` is missing, it attempts to convert a single BDSup2Sub
+    BDN XML index found in the folder.
+
+    For each subtitle entry in the index, the corresponding PNG is loaded and text line boxes
+    are detected from transparency (alpha). Subtitle events are parsed from `path_to_sub`
+    (`.ass` / `.srt`) and matched to images by comparing start times (rounded to 2 decimals)
+    using a forward scan.
 
     Args:
-        path_to_vobsubpng_folder (str | Path): Path to the folder containing VobSub PNGs and `index.json`.
-        path_to_sub (str | Path): Path to the subtitle text file (`.ass` or `.srt`).
-        multiline (bool, optional): Whether to treat multiline subtitles as a single block. Defaults to True.
-        padding (tuple[int,int,int,int], optional): Padding (left, top, right, bottom) to expand bounding boxes.
+        path_to_vobsubpng_folder: Folder containing subtitle PNGs and either `index.json`
+            or a single BDN `.xml` index.
+        path_to_sub: Subtitle text file to parse (typically `.ass` or `.srt`).
+        multiline: If True, treat each PNG as a single subtitle block (one event matched
+            to one detected box set). If False, split the matched event into multiple
+            line events and align them with detected boxes.
+        padding: (left, top, right, bottom) padding in pixels applied to each detected
+            bounding box (clamped to image bounds).
 
     Returns:
-        eventWithPilList: A list-like object where each element links:
-            - the subtitle PNG (`PIL.Image`),
-            - detected text boxes,
-            - and the corresponding subtitle text lines.
+        eventWithPilList: A list-like container of `eventWithPil` objects. Each element
+        contains the loaded `PIL.Image` and a list of `FrameToBoxEvent` items linking:
+            - an `Event` (parsed from the subtitle file),
+            - and a `Box` (geometry around a detected text line).
 
     Raises:
-        FileNotFoundError: If required files or folders are missing.
-        ValueError: If parsing fails or detected text boxes don't match text lines.
-        IndexError: If events cannot be aligned by timing.
+        FileNotFoundError: If the folder / subtitle file is missing, or if neither
+            `index.json` nor a usable XML index is found.
+        ValueError: If subtitle parsing yields no events, if the index has no "subtitles"
+            key, or if the number of detected boxes does not match the number of text lines.
+        IndexError: If a PNG subtitle entry cannot be aligned to any subtitle event by
+            start time.
 
     Notes:
-        - The function assumes PNG transparency corresponds to text areas.
-        - It expects an `index.json` with subtitle metadata and start times.
+        - Alignment is based on start timestamps only; end times are not used.
+        - If multiple subtitle events share the same start time, alignment can be ambiguous.
+        - PNGs whose paths are missing from the index or missing on disk are skipped (warning).
     """
 
     if isinstance(path_to_vobsubpng_folder, str):
@@ -132,14 +246,21 @@ def vobsubpng_to_eventWithPilList(
         raise FileNotFoundError(f'The file {path_to_sub.absolute()} does not exist')
     path_to_index= path_to_vobsubpng_folder / 'index.json'
     if not path_to_index.exists():
-        raise FileNotFoundError(f"The folder exists but the index that should come with it does not : \n{path_to_index.absolute()}")
+        # there is no index.json in the folder, maybe there is a xml file
+        index = xml_index_to_json_index(path_to_folder=path_to_vobsubpng_folder)
+        if index is None:
+            raise FileNotFoundError(
+                f"The folder exists but the index that should come with it does not, it should be a .json file (named inde.json) or a .xml file"
+            )
+    else: 
+        with open(path_to_index) as f:
+            index = json.load(f)
+
     
     document = DocumentPlus.parse_file_plus(str(path_to_sub))
     if len(document.events) <1: 
         raise ValueError(f'The subfile was parsed but no event were detected')
     
-    with open(path_to_index) as f:
-        index = json.load(f)
     if 'subtitles' not in index:
         raise ValueError('Prasing of index.json successfull but "subtitles" not  in the json')
     
