@@ -267,6 +267,7 @@ def vobsubpng_to_eventWithPilList(
     index['subtitles'] = sorted(index['subtitles'], key=lambda x: x['start'])
     last_found = 0
     event_with_pil_list = []
+    tol_ms = 200 if len(index['subtitles']) != len(document.events) else 2000 # if the number of events is the same we are way less strict
     for i, sub in enumerate(index['subtitles']):
         if 'path' not in sub:
             logger.warning(f'the sub {i} does not have a path')
@@ -288,12 +289,15 @@ def vobsubpng_to_eventWithPilList(
         # most of the time, this does not happen in sub/idx files 
         corresponding_event = None
         j=last_found
+
         for event in document.events[last_found:]:
-            if round(event.start.total_seconds(), 2) == round(sub['start'],2):
+            event_ms = int(round(event.start.total_seconds() * 1000))
+            json_ms   = int(round(sub["start"] * 1000))
+            if json_ms - tol_ms <= event_ms <= json_ms + tol_ms:
                 corresponding_event = event
                 last_found=j+1
                 break
-            elif event.start.total_seconds() > sub['start']:
+            elif event_ms > json_ms + tol_ms:
                 # because events are sorted by default, this means the corresponding event cannot be found
                 raise IndexError(f'the corresponding event for sub {i} cannot be found')
             j+=1
