@@ -15,10 +15,11 @@ class recDataset(paddleDataset):
         """Gestion simple d'un dataset d'images pour reconnaissance de texte avec paddle OCR."""
         @classmethod
         def make_dataset(cls, path: str, val_path: str | None = None) :
-            def load_file(path)-> tuple[list, Counter]:
+            def load_file(path)-> tuple[list, Counter, Counter]:
                 with open(path, 'r', encoding='utf-8') as f:
                     images_temp = []
                     c = Counter()
+                    c_length = Counter()
                     for line in f:
                         line = line.strip()
                         if not line:
@@ -35,22 +36,25 @@ class recDataset(paddleDataset):
                             'transcript': transcript
                         })
                         c.update(transcript)
-                return images_temp, c
+                        c_length[len(transcript)] += 1
+                return images_temp, c, c_length
             if not exists(path):
                 raise FileNotFoundError(f"Le fichier {abspath(path)} n'existe pas")
             
             images = []
-            i, c= load_file(path)
+            i, c, c_length = load_file(path)
             images +=  i
 
             if val_path is not None:
                 if not exists(val_path):
                     raise FileNotFoundError(f"Le fichier de validation {abspath(val_path)} n'existe pas")
-                i_v, c_v = load_file(val_path)
+                i_v, c_v, c_length_v = load_file(val_path)
                 images += i_v
                 c += c_v
+                c_length += c_length_v
             s = cls(path, images)
             s.counter = c
+            s.counter_length = c_length
             return s
         
         def verify_dictionnary(self, dictionnaryPath: str, include_space: bool = True) -> set:
