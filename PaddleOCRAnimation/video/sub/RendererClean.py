@@ -153,7 +153,7 @@ class Image(ctypes.Structure):
 
     def to_box(
             self, 
-            padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0, 0, 0, 0),
+            padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0, 0, 0, 0),
             xy_offset: tuple[int, int] = (0,0)
         ) -> Box:
         """
@@ -187,9 +187,12 @@ class Image(ctypes.Structure):
         y1 = self.dst_y - xy_offset[1]
         y2 = y1 + self.h
 
-        if all([(isinstance(p, float) or p ==0 or p==1) for p in padding]) and all([0<=p<=1 for p in padding]):
+        if type(padding) == tuple and all([(isinstance(p, float) or p ==0 or p==1) for p in padding]) and all([0<=p<=1 for p in padding]):
             padding= (int(padding[0]*self.w), int(padding[1]*self.h), int(padding[2]*self.w), int(padding[3]*self.h))
-        
+        elif type(padding) == float and 0< padding < 1:
+            padding = (int(padding*self.h), int(padding*self.h), int(padding*self.h), int(padding*self.h))
+        elif not (type(padding) == tuple and all([isinstance(p, int) for p in padding])): 
+            raise ValueError("padding problem")
 
         box = Box(
             [max(x1 - padding[0], 0), max(y1 - padding[1], 0)],
@@ -307,7 +310,7 @@ class ImageSequence(object):
         return base
 
     def to_box(
-            self, padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0, 0, 0, 0),
+            self, padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0, 0, 0, 0),
             xy_offset: tuple[int, int] = (0,0),
         ) -> Box:
         """
@@ -339,8 +342,13 @@ class ImageSequence(object):
             y2 = max(y2, fullBox[2][1], fullBox[3][1])
         
         w, h = x2 - x1, y2 - y1
-        if all([(isinstance(p, float)) for p in padding]) and all([0<p<1 for p in padding]):
+        if isinstance(padding, float):
+            padding = (int(padding*h), int(padding*h), int(padding*h), int(padding*h))
+        elif isinstance(padding, tuple) and all([(isinstance(p, float)) for p in padding]) and all([0<p<1 for p in padding]):
             padding= (int(padding[0]*w), int(padding[1]*h), int(padding[2]*w), int(padding[3]*h))
+        elif not (isinstance(padding, tuple) and all([(isinstance(p, int)) for p in padding])):
+            raise ValueError('padding problem')
+            
 
         return Box(
             [max(x1 - padding[0], 0), max(y1 - padding[1], 0)], 
@@ -351,7 +359,7 @@ class ImageSequence(object):
         )
 
     def to_singleline_boxes(
-            self, padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0, 0, 0, 0),
+            self, padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0, 0, 0, 0),
             xy_offset: tuple[int, int] = (0,0)
         ) -> list[Box]:
         """

@@ -113,7 +113,7 @@ def create_ocr_dataset(
         attachement_path: str | Path | None = None,
         multiline: bool = False,
         p_timing: float = 0.005,
-        padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.005, 0.1, 0.005, 0.1),
+        padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.005, 0.1, 0.005, 0.1),
         logging_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] = 'INFO',
         ass_log_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] | None = 'DEBUG',
     ) -> None:

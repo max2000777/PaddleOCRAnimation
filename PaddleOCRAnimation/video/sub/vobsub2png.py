@@ -9,7 +9,7 @@ import json
 from platform import system
 from .DocumentPlus import DocumentPlus, split_dialogue
 from .RendererClean import Box
-from ..Video import eventWithPil, FrameToBoxEvent, eventWithPilList
+from ..Video import eventWithPil, FrameToBoxEvent, eventWithPilList, padded_box_from_xyxy
 from datetime import datetime
 from ..classes import dataset_image
 from typing import Literal
@@ -229,7 +229,6 @@ def vobsubpng_to_eventWithPilList(
         - If multiple subtitle events share the same start time, alignment can be ambiguous.
         - PNGs whose paths are missing from the index or missing on disk are skipped (warning).
     """
-
     if isinstance(path_to_vobsubpng_folder, str):
         path_to_vobsubpng_folder = Path(path_to_vobsubpng_folder)
     if isinstance(path_to_sub, str):
@@ -311,11 +310,7 @@ def vobsubpng_to_eventWithPilList(
             raise ValueError(f'The number of lines detected for the sub {i} ({len(boxes)} lines) is not the same as the number of lines in the text ({len(corresponding_event)} lines)')
         event_list = []
         for j, bbox in enumerate(boxes):
-            w, h = sub_image.size
-            b = Box(
-                [max(bbox[0]-padding[0], 0), max(bbox[1]-padding[1], 0)], [min(bbox[2]+padding[2], w), max(bbox[1]-padding[1], 0)],
-                [min(bbox[2]+padding[2], w), min(bbox[3]+padding[3], h)], [max(bbox[0]-padding[0], 0), min(bbox[3]+padding[3], h)]
-            )
+            b = padded_box_from_xyxy(bbox, sub_image.size, padding)
             event_list.append(FrameToBoxEvent(Event=corresponding_event[j], Boxes=b))
         event_with_pil_list.append(eventWithPil(image=sub_image, events=event_list))
             

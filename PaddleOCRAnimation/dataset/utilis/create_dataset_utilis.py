@@ -58,7 +58,7 @@ def dataset_metadata_before(
         preferd_sub_language: str,
         save_format: str,
         multiline: bool,
-        padding: tuple
+        padding: tuple | float
 
     ) -> None:
     """metadata logging before processing
@@ -197,7 +197,7 @@ def timing_to_dataset(
         timing_sec:float, vid:Video, selected_sub_id: int,
         no_text_image_save_path: str | Path, dataset_path: str | Path,
         image_save_path: str | Path, multiline: bool = False,
-        padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.005, 0.1, 0.005, 0.1),
+        padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.005, 0.1, 0.005, 0.1),
         dominant_style: str = 'Default'
     )-> list[dataset_image]:
     """
@@ -333,7 +333,7 @@ def video_to_dataset(
         dataset_path: str | Path,
         save_format: Literal['PaddleOCR'] = 'PaddleOCR',
         preferd_sub_language: str = 'fre', p_timing: float = 0.005,
-        padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.01, 0.1, 0.01, 0.1),
+        padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.01, 0.1, 0.01, 0.1),
         multiline: bool = False
 ) -> tuple[int, int]:
     """

@@ -43,6 +43,56 @@ class NoCorrectSubFound(Exception):
     """
     pass
 
+def padded_box_from_xyxy(
+            box: tuple[int, int, int, int],
+            img_size: tuple[int, int],
+            padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float
+        ) -> Box:
+            """
+            Create a padded, image-clamped Box from an (x0, y0, x1, y1) rectangle.
+
+            padding:
+            - float in [0,1]: uniform padding = ratio of box height (applied to all 4 sides)
+            - (l,t,r,b) ints: pixel padding
+            - (l,t,r,b) floats in [0,1]: ratio padding (l/r use box width, t/b use box height)
+            """
+            w, h = img_size
+            x0, y0, x1, y1 = box
+            box_w = x1 - x0
+            box_h = y1 - y0
+
+            if isinstance(padding, float):
+                if not (0.0 <= padding <= 1.0):
+                    raise ValueError("Scalar float padding must be a ratio in [0, 1].")
+                p = int(round(box_h * padding))
+                l = t = r = b = p
+
+            elif isinstance(padding, tuple) and len(padding) == 4 and all(isinstance(p, int) for p in padding):
+                l, t, r, b = padding
+
+            elif isinstance(padding, tuple) and len(padding) == 4 and all(isinstance(p, float) for p in padding):
+                if not all(0.0 <= p <= 1.0 for p in padding):
+                    raise ValueError("Tuple float padding values must be ratios in [0, 1].")
+                l = int(round(box_w * padding[0]))
+                t = int(round(box_h * padding[1]))
+                r = int(round(box_w * padding[2]))
+                b = int(round(box_h * padding[3]))
+
+            else:
+                raise ValueError("Padding must be (l,t,r,b) all int, or all float ratios in [0,1], or a float ratio.")
+
+            # Clamp
+            nx0 = max(x0 - l, 0)
+            ny0 = max(y0 - t, 0)
+            nx1 = min(x1 + r, w)
+            ny1 = min(y1 + b, h)
+
+            return Box(
+                [nx0, ny0],
+                [nx1, ny0],
+                [nx1, ny1],
+                [nx0, ny1],
+            )
 
 class Video:
     path: str
@@ -454,7 +504,7 @@ class Video:
             context: RendererClean.Context, piste: int,
             SIZE: tuple[int, int] | None = None,
             multiline: bool = False,
-            padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (1, 1, 1, 1),
+            padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (1, 1, 1, 1),
             use_transparency: bool = True,
         )-> eventWithPilList:
         """
@@ -516,7 +566,6 @@ class Video:
                 x_min = min(point[0] for point in box.full_box)
                 return (y_min, x_min)
             return sorted(boxes, key=position_cle)
-
         if isinstance(timestamp, float) or isinstance(timestamp, int):
             timestamp = timedelta(seconds=timestamp)
         if SIZE is None:
@@ -562,22 +611,7 @@ class Video:
                 if use_transparency:
                     boxes_list = detect_text_line_boxes(PIL, multiline=multiline, libass_box=boxes_list)
                     for i, box in enumerate(boxes_list):
-                        w,h = PIL.size
-                        box_w, box_h = box[2] - box[0], box[3]-box[1] 
-                        if all([isinstance(b, int) for b in padding]):
-                            boxes_list[i] = Box(
-                                [max(box[0]-padding[0], 0), max(box[1]-padding[1], 0)], [min(box[2]+padding[2], w), max(box[1]-padding[1], 0)],
-                                [min(box[2]+padding[2], w), min(box[3]+padding[3], h)], [max(box[0]-padding[0], 0), min(box[3]+padding[3], h)]
-                            )
-                        elif all([isinstance(b, float) for b in padding]) and all([0<=b<=1 for b in padding]):
-                            boxes_list[i] = Box(
-                                [max(int(box[0]-box_w * padding[0]), 0), max(int(box[1]-box_h*padding[1]), 0)], 
-                                [min(int(box[2]+box_w *padding[2]), w), max(int(box[1]- box_h*padding[1]), 0)],
-                                [min(int(box[2]+box_w *padding[2]), w), min(int(box[3]+box_h*padding[3]), h)], 
-                                [max(int(box[0]-box_w *padding[0]), 0), min(int(box[3]+box_h*padding[3]), h)]
-                            )
-                        else:
-                            raise ValueError('Padding should be all int or all float between 0 and 1')
+                        boxes_list[i] = padded_box_from_xyxy(box=box, img_size=PIL.size, padding=padding)
                 for i in range(len(events_list)):
                     dict_event = {
                         "Event": events_list[i],
@@ -589,22 +623,7 @@ class Video:
                     box = detect_text_line_boxes(PIL, multiline=multiline)[0]
                     if len(box) != 1:
                         raise ValueError(f"The should be one box, there is only one event and it is multiline")
-                    w,h = PIL.size
-                    box_w, box_h = box[2] - box[0], box[3]-box[1] 
-                    if all([isinstance(b, int) for b in padding]):
-                        boxes_list[i] = Box(
-                            [max(box[0]-padding[0], 0), max(box[1]-padding[1], 0)], [min(box[2]+padding[2], w), max(box[1]-padding[1], 0)],
-                            [min(box[2]+padding[2], w), min(box[3]+padding[3], h)], [max(box[0]-padding[0], 0), min(box[3]+padding[3], h)]
-                        )
-                    elif all([isinstance(b, float) for b in padding]) and all([0<=b<=1 for b in padding]):
-                        boxes_list[i] = Box(
-                            [max(int(box[0]-box_w * padding[0]), 0), max(int(box[1]-box_h*padding[1]), 0)], 
-                            [min(int(box[2]+box_w *padding[2]), w), max(int(box[1]- box_h*padding[1]), 0)],
-                            [min(int(box[2]+box_w *padding[2]), w), min(int(box[3]+box_h*padding[3]), h)], 
-                            [max(int(box[0]-box_w *padding[0]), 0), min(int(box[3]+box_h*padding[3]), h)]
-                        )
-                    else:
-                        raise ValueError('Padding should be all int or all float between 0 and 1')
+                    boxes_list[i] = padded_box_from_xyxy(box=box, img_size=PIL.size, padding=padding)
                 else:
                     box = resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
 
