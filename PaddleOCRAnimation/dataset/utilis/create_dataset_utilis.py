@@ -284,7 +284,8 @@ def timing_to_dataset(
     return_dataset_image_list += small_images_to_dataset(
         timestamp=timing_sec, video=vid, r=r,
         dataset_path=str(dataset_path), image_save_path=str(image_save_path),
-        ctx=ctx, multiline=multiline, sub_id=selected_sub_id
+        ctx=ctx, multiline=multiline, sub_id=selected_sub_id,
+        padding= padding
     )    
 
     return_dataset_image_list += big_images_to_dataset(

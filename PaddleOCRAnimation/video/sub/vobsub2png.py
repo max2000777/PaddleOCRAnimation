@@ -325,7 +325,7 @@ def vobsubpng_to_dataset(
         image_save_path: str | Path | None = None,
         dataset_txt: str | Path | None = None,
         multiline: bool = True,
-        padding: tuple[int,int,int,int] = (1, 1, 1, 1),
+        padding: tuple[int,int,int,int] | float = (1, 1, 1, 1),
         format: Literal['PaddleOCR'] = 'PaddleOCR',
 ) -> None:
     """

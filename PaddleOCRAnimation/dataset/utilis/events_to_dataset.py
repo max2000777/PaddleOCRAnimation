@@ -17,7 +17,7 @@ def small_images_to_dataset(
         ctx: Context, multiline: bool = True,
         sub_id: int = 0,
         p: float = 0.15,
-        padding: tuple[int, int, int, int] | tuple[float, float, float, float] = (0.005, 0.1, 0.005, 0.1),
+        padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.005, 0.1, 0.005, 0.1),
 ) -> list[dataset_image]:
     vid_name = Path(video.path).stem
     if random.random()>p:

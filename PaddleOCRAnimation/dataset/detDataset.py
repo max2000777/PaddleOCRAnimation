@@ -8,6 +8,8 @@ from tqdm.auto import tqdm
 import re
 from pathlib import Path
 import warnings
+import random
+from numpy.random import normal
 
 class paddleDataset:
     def __init__(self, path: str, images: list[dict]):
@@ -242,6 +244,8 @@ class detDataset(paddleDataset):
             self, foldername: str | None = None,
             txt_name: str | None = None, 
             traintestsplit: float | None = None,
+            p_random_tilt: float = 0.08,
+            p_random_padding: float = 0.07,
             val_txt_name: str = 'recTest.txt'
         )-> None:
         """
@@ -264,6 +268,14 @@ class detDataset(paddleDataset):
             ValueError: Si `traintestsplit` est hors de [0, 1].
             ValueError: Si une annotation ne contient pas la clé 'points'.
     """
+        def normalize_box(
+                        box: list[list[int]]
+            ) -> tuple[int, int, int, int]:
+                left = min(p[0] for p in box)
+                top = min(p[1] for p in box)
+                right = max(p[0] for p in box)
+                bottom = max(p[1] for p in box)
+                return (left, top, right, bottom)
         images_not_exist = self.verify_images()
         if traintestsplit is not None and not (traintestsplit<=1 and traintestsplit>=0):
             raise ValueError(f"traintestsplit should be a float between 0 and 1 (here {traintestsplit})")
@@ -278,20 +290,48 @@ class detDataset(paddleDataset):
                 continue
 
             img = PILImage.open(join(dirname(self.path), image['image_path']))
+            w, h = img.size
 
             for i, annotation in enumerate(image.get('annotations', [])):
-                def normalize_box(
-                        box: list[list[int]]
-                    ) -> tuple[int, int, int, int]:
-                    left = min(p[0] for p in box)
-                    top = min(p[1] for p in box)
-                    right = max(p[0] for p in box)
-                    bottom = max(p[1] for p in box)
-                    return (left, top, right, bottom)
                 if 'points' not in annotation:
                     raise ValueError("'points' not present in dict")
+                points = normalize_box(annotation['points'])
+
+
+
+                points = list(points)
+                if random.random() < p_random_padding:
+                    points[0] += random.choices([3, 2, 1, -1, -2], weights=[9, 12, 15, 15, 10])[0]
+                if random.random() < p_random_padding:
+                    points[1] += random.choices([3, 2, 1, -1, -2], weights=[9, 12, 15, 15, 10])[0]
+                if random.random() < p_random_padding:
+                    points[2] += random.choices([-3, -2, -1, 1, 2], weights=[9, 12, 15, 15, 10])[0]
+                if random.random() < p_random_padding:
+                    points[3] += random.choices([-3, -2, -1, 1, 2], weights=[9, 12, 15, 15, 10])[0]
                 
-                crop = img.crop(normalize_box(annotation['points']))
+                
+                if random.random() < p_random_tilt:
+                    img_copy = img.rotate(
+                        normal(loc=0, scale=0.2),
+                        expand=True,
+                        fillcolor="black"
+                    )
+                    points[1], points[3] = points[1]-1, points[3]+1
+                else:
+                    img_copy = img.copy()
+                points = (
+                    max(0, points[0]),
+                    max(0, points[1]),
+                    min(w, points[2]),
+                    min(h, points[3])
+                )
+                points = tuple(points)
+                try:
+                    crop = img_copy.crop(points)
+                except ValueError as e:
+                    print(f'error for {basename(image["image_path"])}: {e}')
+                    continue
+
 
                 rel_path = join(
                     foldername,
