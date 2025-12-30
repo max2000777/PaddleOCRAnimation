@@ -109,14 +109,21 @@ class recDataset(paddleDataset):
             """
             new_image_list = []
             num_del_images = 0
+            c = Counter()
+            c_length = Counter()
             for image in self: 
-                if len(image.get('transcript', '')) >= min_length and len(image.get('transcript', '')) <= max_length:
+                transcript = image.get('transcript', '')
+                if len(transcript) >= min_length and len(transcript) <= max_length:
                     new_image_list.append(image)
+                    c.update(transcript)
+                    c_length[len(transcript)] += 1
                 else:
                     num_del_images += 1
             
             print(f'removed {num_del_images} images (new length is {len(new_image_list)})')
             self.images = new_image_list
+            self.counter = c
+            self.counter_length = c_length
         
         def print_text_and_display_image(self, index: int | str):
             print(self[index]['transcript'])
@@ -129,34 +136,41 @@ class recDataset(paddleDataset):
         def save_dataset(
                 self, path: str | None = None, train_prop: float = 1,
                 train_file_name: str = 'recTrain.txt', 
-                test_file_name: str = 'recTest.txt'
+                test_file_name: str = 'recTest.txt',
+                max_train_length: int = 100
             ):
             """Save the dataset to disk as train/test TSV files.
 
-            Shuffles the samples, then writes a train split of size
-            ``int(len(self.images) * train_prop)`` to ``train_file_name``.
-            If ``train_prop < 1``, the remaining samples are written to
-            ``test_file_name``. Each line is formatted as:
+            Shuffles samples, then selects ``int(len(self.images) * train_prop)`` items
+            for the train split and writes them to ``train_file_name``. A max transcript
+            length filter (``max_train_length``) is applied **only to the train split**
+            during writing, so the final number of written train samples (and thus the
+            effective train/test proportion) may differ from ``train_prop``.
+            If ``train_prop < 1``, the remaining samples are written to ``test_file_name``
+            without length filtering. Each line is formatted as:
             ``<image_path>\\t<transcript>\\n``.
 
             Args:
                 path: Output directory. If None, uses the current working directory.
-                train_prop: Proportion of samples to put in the train split (0.0 to 1.0).
+                train_prop: Proportion of samples selected for the train split (0.0 to 1.0).
                 train_file_name: Filename for the train split.
                 test_file_name: Filename for the test split.
+                max_train_length: Maximum transcript length allowed for train samples.
             """
-            def write_data(path: str, data:list):
+            def write_data(path: str, data: list, max_length: int = 1000):
                 with open(path, 'w', encoding='utf-8') as f:
                     for item in data:
-                        line = f"{item['image_path']}\t{item['transcript']}\n"
-                        f.write(line)
+                        if len(item['transcript']) <= max_length:
+                            line = f"{item['image_path']}\t{item['transcript']}\n"
+                            f.write(line)
+
             if not (0.0 <= train_prop <= 1.0):
-                raise ValueError("test_prop must be in [0, 1].")
+                raise ValueError("train_prop must be in [0, 1].")
             path = getcwd() if not path else path
             l= self.images.copy()
             n_train = int(len(l) * train_prop)
             shuffle(l)
-            write_data(join(path, train_file_name), l[:n_train])
+            write_data(join(path, train_file_name), l[:n_train], max_length=max_train_length)
 
             if train_prop != 1:
                 write_data(join(path, test_file_name), l[n_train:])
