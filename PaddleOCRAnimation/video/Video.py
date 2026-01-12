@@ -20,7 +20,7 @@ import logging
 from .iso_codes import iso_639_dict
 from ..dataset.utilis.disturb import disturb_image, style_transform
 from .classes import eventWithPilList, eventWithPil, FrameToBoxEvent, FrameToBoxResult, SubTrackInfo
-from ..video.utilis import detect_text_line_boxes
+from ..video.utilis import detect_text_line_xyxy
 from .sub.box import Box
 from warnings import warn
 
@@ -594,7 +594,9 @@ class Video:
             
             PIL = resultats_libass.to_pil(SIZE)
             event_tuple=(PIL,[])
+
             # TODO : faire un dictonnaire de classe
+            events_list = event
             if not multiline:
                 events_list = splitDialogue(event)
                 boxes_list = trier_boxes_par_position(
@@ -608,32 +610,32 @@ class Video:
                         "This is most likely due to libass automatic line break when the text is too long"
                     )
                 
-                if use_transparency:
-                    boxes_list = detect_text_line_boxes(PIL, multiline=multiline, libass_box=boxes_list)
-                    for i, box in enumerate(boxes_list):
-                        boxes_list[i] = padded_box_from_xyxy(box=box, img_size=PIL.size, padding=padding)
-                for i in range(len(events_list)):
-                    dict_event = {
-                        "Event": events_list[i],
-                        "Boxes": boxes_list[i]
-                    }
-                    event_tuple[1].append(FrameToBoxEvent(**dict_event))
-            else:
-                if use_transparency:
-                    box = detect_text_line_boxes(PIL, multiline=multiline)[0]
-                    if len(box) != 1:
-                        raise ValueError(f"The should be one box, there is only one event and it is multiline")
+            if use_transparency:
+                boxes_list = detect_text_line_xyxy(PIL, multiline=multiline, libass_box= boxes_list or None)
+                for i, box in enumerate(boxes_list):
                     boxes_list[i] = padded_box_from_xyxy(box=box, img_size=PIL.size, padding=padding)
-                else:
-                    box = resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
-
+            for i in range(len(events_list)):
                 dict_event = {
-                        "Event": event,
-                        "Boxes": box
-                    }
-                event_tuple[1].append(
-                    FrameToBoxEvent(**dict_event)
-                )
+                    "Event": events_list[i],
+                    "Boxes": boxes_list[i]
+                }
+                event_tuple[1].append(FrameToBoxEvent(**dict_event))
+            # else:
+            #     if use_transparency:
+            #         box = detect_text_line_xyxy(PIL, multiline=multiline)
+            #         if len(box) != 1:
+            #             raise ValueError(f"The should be one box, there is only one event and it is multiline")
+            #         boxes_list[i] = padded_box_from_xyxy(box=box, img_size=PIL.size, padding=padding)
+            #     else:
+            #         box = resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
+
+            #     dict_event = {
+            #             "Event": event,
+            #             "Boxes": box
+            #         }
+            #     event_tuple[1].append(
+            #         FrameToBoxEvent(**dict_event)
+            #     )
             returnliste.append(eventWithPil(image=event_tuple[0], events=event_tuple[1]))
         return eventWithPilList(returnliste)
 

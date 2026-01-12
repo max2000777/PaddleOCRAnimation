@@ -1,7 +1,7 @@
 from PIL import Image
 from .sub.box import Box
 
-def detect_text_line_boxes(
+def detect_text_line_xyxy(
         sub_image: Image.Image, 
         multiline: bool = True, 
         threshold_percent:float = 0.01,
