@@ -231,11 +231,13 @@ def vobsubpng_to_eventWithPilList(
     """
     def dynamic_padding(
             event_text: str, padding:tuple[int, int, int, int],
-            three_dots_padding: int = 10
+            three_dots_padding: int = 3, point_padding: int = 2
         ):
         l, t, r, b = padding
         if event_text.endswith('...') or event_text.endswith('…'):
             r += three_dots_padding
+        elif event_text.endswith('.'):
+            r+= point_padding
         
         return (l, t, r, b)
 
@@ -320,7 +322,10 @@ def vobsubpng_to_eventWithPilList(
             raise ValueError(f'The number of lines detected for the sub {i} ({len(boxes)} lines) is not the same as the number of lines in the text ({len(corresponding_event)} lines)')
         event_list = []
         for j, bbox in enumerate(boxes):
-            d_padding = dynamic_padding(corresponding_event[j].text, padding=padding, three_dots_padding=5)
+            d_padding = dynamic_padding(
+                corresponding_event[j].text, padding=padding, 
+                three_dots_padding=3, point_padding=2
+            )
             b = padded_box_from_xyxy(bbox, sub_image.size, d_padding)
             event_list.append(FrameToBoxEvent(Event=corresponding_event[j], Boxes=b))
         event_with_pil_list.append(eventWithPil(image=sub_image, events=event_list))

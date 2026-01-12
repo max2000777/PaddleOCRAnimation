@@ -572,12 +572,14 @@ class Video:
             return sorted(boxes, key=position_cle)
         def change_box_size(
                 box: Box, event_text:str, img_size: tuple[int, int],
-                three_dots_padding: int = 5
+                three_dots_padding: int = 3, point_padding: int =2
             ) -> Box:
+            l, t, r, b = 0, 0, 0, 0
             if event_text.endswith('...') or event_text.endswith('…'):
-                logger.debug(box.full_box)
-                box.resize_box(padding=(0, 0, three_dots_padding, 0), image_size=PIL.size)
-                logger.debug(box.full_box)
+                r+=three_dots_padding
+            elif event_text.endswith('.'):
+                r+= point_padding
+            box.resize_box(padding=(l, t, r, b), image_size=PIL.size)
             return box
 
         if isinstance(timestamp, float) or isinstance(timestamp, int):
