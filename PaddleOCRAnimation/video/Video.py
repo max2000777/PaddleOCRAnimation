@@ -42,6 +42,10 @@ class NoCorrectSubFound(Exception):
     """used to indicate that no correct sub has been found in a mkv
     """
     pass
+class lineBreakError(Exception):
+    """used to indicate that the lenght of the sub is too long, a automatic line break was added
+    """
+    pass
 
 def padded_box_from_xyxy(
             box: tuple[int, int, int, int],
@@ -566,6 +570,16 @@ class Video:
                 x_min = min(point[0] for point in box.full_box)
                 return (y_min, x_min)
             return sorted(boxes, key=position_cle)
+        def change_box_size(
+                box: Box, event_text:str, img_size: tuple[int, int],
+                three_dots_padding: int = 5
+            ) -> Box:
+            if event_text.endswith('...') or event_text.endswith('…'):
+                logger.debug(box.full_box)
+                box.resize_box(padding=(0, 0, three_dots_padding, 0), image_size=PIL.size)
+                logger.debug(box.full_box)
+            return box
+
         if isinstance(timestamp, float) or isinstance(timestamp, int):
             timestamp = timedelta(seconds=timestamp)
         if SIZE is None:
@@ -596,7 +610,7 @@ class Video:
             event_tuple=(PIL,[])
 
             # TODO : faire un dictonnaire de classe
-            events_list = event
+            events_list = [event]
             if not multiline:
                 events_list = splitDialogue(event)
                 boxes_list = trier_boxes_par_position(
@@ -605,37 +619,25 @@ class Video:
                 )
                 if len(events_list) != len(boxes_list):
                     vid_name = basename(self.path)
-                    raise ValueError(
-                        f"'{vid_name}', {timestamp} : there should be the same number of line than the number of boxes (here {len(events_list)} lines and {len(boxes_list)} boxes). "
+                    raise lineBreakError(
+                        f"'{vid_name}', {timestamp} : there should be the same number of line than the number of boxes "
+                        f"(here {len(events_list)} lines and {len(boxes_list)} boxes).\n"
                         "This is most likely due to libass automatic line break when the text is too long"
                     )
+            else: 
+                boxes_list = [resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))]
                 
             if use_transparency:
-                boxes_list = detect_text_line_xyxy(PIL, multiline=multiline, libass_box= boxes_list or None)
+                boxes_list = detect_text_line_xyxy(PIL, multiline=multiline, libass_box= boxes_list)
                 for i, box in enumerate(boxes_list):
                     boxes_list[i] = padded_box_from_xyxy(box=box, img_size=PIL.size, padding=padding)
             for i in range(len(events_list)):
+                changed_box = change_box_size(boxes_list[i], events_list[i].text, PIL.size)
                 dict_event = {
                     "Event": events_list[i],
-                    "Boxes": boxes_list[i]
+                    "Boxes": changed_box
                 }
                 event_tuple[1].append(FrameToBoxEvent(**dict_event))
-            # else:
-            #     if use_transparency:
-            #         box = detect_text_line_xyxy(PIL, multiline=multiline)
-            #         if len(box) != 1:
-            #             raise ValueError(f"The should be one box, there is only one event and it is multiline")
-            #         boxes_list[i] = padded_box_from_xyxy(box=box, img_size=PIL.size, padding=padding)
-            #     else:
-            #         box = resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))
-
-            #     dict_event = {
-            #             "Event": event,
-            #             "Boxes": box
-            #         }
-            #     event_tuple[1].append(
-            #         FrameToBoxEvent(**dict_event)
-            #     )
             returnliste.append(eventWithPil(image=event_tuple[0], events=event_tuple[1]))
         return eventWithPilList(returnliste)
 

@@ -19,8 +19,6 @@ import numpy as np
 
 from typing import Iterator, Tuple, ClassVar
 
-from ..utilis import detect_text_line_boxes
-
 from .box import Box
 import importlib.resources
 import importlib.resources._legacy

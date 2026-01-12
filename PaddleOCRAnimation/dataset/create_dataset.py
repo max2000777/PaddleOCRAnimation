@@ -112,6 +112,7 @@ def create_ocr_dataset(
         preferd_sub_language: str = 'fre', 
         attachement_path: str | Path | None = None,
         multiline: bool = False,
+        use_transparency: bool = True,
         p_timing: float = 0.005,
         padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.005, 0.1, 0.005, 0.1),
         logging_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] = 'INFO',
@@ -163,6 +164,8 @@ def create_ocr_dataset(
         multiline (bool, optional):
             If one event (detection box) can contain multiple text lines. If `False`, one box 
             will contain maximum one line. Default to `False`.
+        use_transparency (bool, optional):
+            TODO
         p_timing (float, optional):
             Probability parameter controlling the number of selected timings over one
             video duration. Roughly corresponds to a sampling ratio.
@@ -263,7 +266,8 @@ def create_ocr_dataset(
             save_format=save_format,
             multiline=multiline,
             p_timing=p_timing,
-            padding= padding
+            padding= padding,
+            use_transparency= use_transparency,
         )
         n_text_image += text
         n_no_text_image += no_text

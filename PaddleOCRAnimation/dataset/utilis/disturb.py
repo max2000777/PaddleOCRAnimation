@@ -275,7 +275,7 @@ def pixelate_image(
     pixelated = downsize_upsize(img, factor=factor)
     logger.debug(f"Pixaleted image with ratio {factor}")
 
-    if not event_list:
+    if event_list is None:
         return pixelated
     
     for i, event in enumerate(event_list):
@@ -339,7 +339,7 @@ def change_rez_image(
     w, h = int(w*ratio), int(h * ratio)
     img = img.resize(size=(w, h))
 
-    if event_list:
+    if event_list is not None:
         for i, event in enumerate(event_list):
             w, h = event.image.size
             w, h = int(w*ratio), int(h*ratio)
@@ -374,29 +374,41 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         Image.Image | tuple[Image.Image, eventWithPilList]:  
             The distorted image, and the updated event list if provided.
     """
+    transforms_applied = []
+
     if random.random() < 0.15:
         if event_list is None:
             img=crop_image(image=img)
         else:
             img, event_list = crop_image(image=img, event_list=event_list)
+        transforms_applied.append("crop_image")
+
     elif random.random() < 0.15:
         if event_list is None:
             img=crop_image(image=img, reverse=True)
         else:
             img, event_list = crop_image(image=img, event_list=event_list, reverse=True)
+        transforms_applied.append("crop_image_reverse")
+
     if random.random() < 0.30:
         img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 2)))
+        transforms_applied.append("GaussianBlur")
+
     if random.random() < 0.15:
         img = add_noise(img, std=random.uniform(2, 12))
+        transforms_applied.append("add_noise")
 
     if random.random() < 0.10:
         img = jpeg_compress(img, quality=random.randint(15, 36))
+        transforms_applied.append("jpeg_compress")
 
     elif random.random() < 0.3:
         if event_list is None:
             img = pixelate_image(img=img)
         else:
             img, event_list = pixelate_image(img=img, event_list=event_list)
+        transforms_applied.append("pixelate_image")
+
     
     elif random.random() < 0.3:
         if event_list is None:
@@ -404,16 +416,19 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         else:
             img, event_list = change_rez_image(img=img, event_list=event_list)
 
+        transforms_applied.append("change_rez_image")
+
     if random.random() < 0.1:
         img = salt_and_pepper(img).convert('RGBA') if img.mode == 'RGBA' else salt_and_pepper(img)
+        transforms_applied.append("salt_and_pepper")
+
     if random.random()<0.20:
         if event_list is None:
             img=add_black_band(img=img)
         else:
             img, event_list = add_black_band(img=img, event_list=event_list)
-    
-    
-    
+        transforms_applied.append("add_black_band")
+
     if event_list is None:
         return img
     return img, event_list
@@ -506,7 +521,7 @@ def disturb_text(
     def add_three_dots(
             event: line.Dialogue,
             p_three_dots_before: float = 0.1,
-            p_three_dots_after:float = 0.2,
+            p_three_dots_after:float = 0.35,
             p_point_after: float = 0.25,
             timestamp: timedelta | None = None
     ) -> line.Dialogue:
@@ -588,9 +603,9 @@ def disturb_text(
         
         rom_num = random.choices([' I ', ' II ', ' III ', ' IV' , ' V ', ' VI ', ' VIII ', ' XI ', ' XII '], weights=[0.1, 0.20, 0.17, 0.13, 0.10, 0.08, 0.06, 0.1, 0.1], k=1)[0]
         prio_list = [
-            ' “', '” ', ' W', ' K', ' Y',' F', '_','" ',' "', ' : ',   rom_num
+            ' “', '” ', ' W', ' K', ' Y',' F', '_','" ',' "', ' : ', '...',   rom_num
         ]
-        w= [10, 10, 13, 6, 5, 13, 10, 10, 10, 15]
+        w= [10, 10, 6, 6, 5, 6, 10, 10, 10, 15, 20, 15]
         spe_char= random.choices(prio_list, weights=w,k=1)[0]
         event.text = replace_random_space(s=event.text, replacement=spe_char)
         logger.debug(f'added prio spe char {spe_char} in {event.text}')

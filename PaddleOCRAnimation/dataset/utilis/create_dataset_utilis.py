@@ -1,5 +1,5 @@
 from pathlib import Path
-from ...video.Video import Video, NoCorrectSubFound
+from ...video.Video import Video, NoCorrectSubFound, lineBreakError
 import os
 import logging
 from tqdm.auto import tqdm
@@ -198,7 +198,8 @@ def timing_to_dataset(
         no_text_image_save_path: str | Path, dataset_path: str | Path,
         image_save_path: str | Path, multiline: bool = False,
         padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.005, 0.1, 0.005, 0.1),
-        dominant_style: str = 'Default'
+        dominant_style: str = 'Default',
+        use_transparency: bool = True
     )-> list[dataset_image]:
     """
     Generates one or more dataset images for a specific video timestamp.
@@ -221,6 +222,7 @@ def timing_to_dataset(
         multiline (bool, optional): Whether multiline subtitle rendering is allowed (a sub is an event). Defaults to `False`, a line is an event.
         padding (tuple, optional): TODO,
         dominant_style (str, optional): The default style of the document (most often the one used by most events)
+        use_transparency (bool, optional): TODO
 
     Returns:
         list[dataset_image]: A list of generated dataset images, including the
@@ -261,14 +263,14 @@ def timing_to_dataset(
         vid.docs[selected_sub_id].events = disturb_text(event_list=vid.docs[selected_sub_id].events, timestamp=timing_sec)
     
     events_with_pil = vid.get_subtitle_boxes(timestamp=timing_sec, renderer=r, context=ctx, 
-                                             piste=selected_sub_id, multiline = multiline, padding=padding)
+                                             piste=selected_sub_id, multiline = multiline, padding=padding,
+                                             use_transparency=use_transparency)
 
     return_event_list = []
     
     for event in events_with_pil: 
         background = Image.alpha_composite(background, event.image)
         return_event_list+=event.events
-    
     background, events_with_pil = disturb_image(background, events_with_pil) # disturb image after composite to try to disturb subs too
 
     # crop can remove all events in the frame
@@ -335,7 +337,8 @@ def video_to_dataset(
         save_format: Literal['PaddleOCR'] = 'PaddleOCR',
         preferd_sub_language: str = 'fre', p_timing: float = 0.005,
         padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.01, 0.1, 0.01, 0.1),
-        multiline: bool = False
+        multiline: bool = False,
+        use_transparency: bool = True,
 ) -> tuple[int, int]:
     """
     Extracts subtitle-based training data from an MKV video and saves it as a dataset.
@@ -383,6 +386,8 @@ def video_to_dataset(
         multiline (bool, optional):
             If one event (detection box) can contain multiple text lines. If `False`, one box 
             will contain maximum one line. Default to `False`.
+        use_transparency (bool, optional):
+            TODO
 
     Raises:
         FileNotFoundError:
@@ -462,6 +467,7 @@ def video_to_dataset(
             multiline=multiline,
             padding=padding,
             dominant_style=dom_style,
+            use_transparency=use_transparency,
         ) for timing in timings]
     
     n_text_image, n_no_text_image = 0, 0
@@ -476,8 +482,11 @@ def video_to_dataset(
                     n_no_text_image += 1
                 del image
             del timing_results
+        except lineBreakError as l:
+            logger.error(f'{Path(video_path).stem} : {l}')
         except Exception as e:
             logger.error(f'{Path(video_path).stem} : Error during result opening {e}')
+
     
     after_video_to_dataset_cleanup(
         vid=vid,

@@ -13,7 +13,7 @@ from ..Video import eventWithPil, FrameToBoxEvent, eventWithPilList, padded_box_
 from datetime import datetime
 from ..classes import dataset_image
 from typing import Literal
-from ..utilis import detect_text_line_boxes
+from ..utilis import detect_text_line_xyxy
 from fractions import Fraction
 import xml.etree.ElementTree as ET
 
@@ -229,6 +229,16 @@ def vobsubpng_to_eventWithPilList(
         - If multiple subtitle events share the same start time, alignment can be ambiguous.
         - PNGs whose paths are missing from the index or missing on disk are skipped (warning).
     """
+    def dynamic_padding(
+            event_text: str, padding:tuple[int, int, int, int],
+            three_dots_padding: int = 10
+        ):
+        l, t, r, b = padding
+        if event_text.endswith('...') or event_text.endswith('…'):
+            r += three_dots_padding
+        
+        return (l, t, r, b)
+
     if isinstance(path_to_vobsubpng_folder, str):
         path_to_vobsubpng_folder = Path(path_to_vobsubpng_folder)
     if isinstance(path_to_sub, str):
@@ -300,7 +310,7 @@ def vobsubpng_to_eventWithPilList(
                 # because events are sorted by default, this means the corresponding event cannot be found
                 raise IndexError(f'the corresponding event for sub {i} cannot be found')
             j+=1
-        boxes = detect_text_line_boxes(sub_image, multiline) # try to isolate the text 
+        boxes = detect_text_line_xyxy(sub_image, multiline) # try to isolate the text 
         boxes.sort(key=lambda x: x[1], reverse=False) # we sort boxes by their top coord
         if multiline:
             corresponding_event = [corresponding_event]
@@ -310,7 +320,8 @@ def vobsubpng_to_eventWithPilList(
             raise ValueError(f'The number of lines detected for the sub {i} ({len(boxes)} lines) is not the same as the number of lines in the text ({len(corresponding_event)} lines)')
         event_list = []
         for j, bbox in enumerate(boxes):
-            b = padded_box_from_xyxy(bbox, sub_image.size, padding)
+            d_padding = dynamic_padding(corresponding_event[j].text, padding=padding, three_dots_padding=5)
+            b = padded_box_from_xyxy(bbox, sub_image.size, d_padding)
             event_list.append(FrameToBoxEvent(Event=corresponding_event[j], Boxes=b))
         event_with_pil_list.append(eventWithPil(image=sub_image, events=event_list))
             

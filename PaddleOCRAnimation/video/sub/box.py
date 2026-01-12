@@ -71,7 +71,7 @@ class Box:
         ):
             raise ValueError(f'padding should be a tuple with 4 int, here {padding}')
         
-        padding_left, padding_top, _, _ = padding
+        padding_left, padding_top, padding_right, padding_bot = padding
 
         self.haut_gauche = [max(self.haut_gauche[0]+padding_left, 0), max(self.haut_gauche[1]+padding_top, 0)]
         self.haut_droit = [max(self.haut_droit[0]+padding_left, 0), max(self.haut_droit[1]+padding_top, 0)]
@@ -96,6 +96,37 @@ class Box:
             self.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
         if self.bas_droit[1] <= self.haut_droit[1]:
                 self.full_box = [[0, 0], [0, 0], [0, 0], [0, 0]]
+    
+    def resize_box(
+            self, padding:tuple[int, int, int, int],
+            image_size: tuple[int, int] | None = None
+        ):
+        left, top, right, bottom = padding
+        self.haut_gauche[0] -= left
+        self.haut_gauche[1] -= top
+
+        self.haut_droit[0] += right
+        self.haut_droit[1] -= top
+
+        self.bas_droit[0] += right
+        self.bas_droit[1] += bottom
+
+        self.bas_gauche[0] -= left
+        self.bas_gauche[1] += bottom
+
+        if image_size is not None:
+            w, h = image_size
+            for p in (self.haut_gauche, self.haut_droit, self.bas_droit, self.bas_gauche):
+                p[0] = min(p[0], w)
+                p[1] = min(p[1], h)
+        
+        self.full_box = [
+            self.haut_gauche,
+            self.haut_droit,
+            self.bas_droit,
+            self.bas_gauche
+        ]
+
 
     def resize(self, scale: float):
         """Resizes the box coordinates by a given scale factor.
