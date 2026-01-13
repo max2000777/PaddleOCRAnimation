@@ -10,6 +10,8 @@ from pathlib import Path
 import warnings
 import random
 from numpy.random import normal
+from collections import Counter
+
 
 class paddleDataset:
     def __init__(self, path: str, images: list[dict]):
@@ -154,6 +156,21 @@ class detDataset(paddleDataset):
                     i+=1
                 print(i)
             return images_temp
+        
+        def create_counters(images: list[dict], path_to_dataset: str):
+            percentage_counter = Counter()
+            w_counter = Counter()
+            for image in images:
+                if not exists(join(path_to_dataset,image['image_path'])):
+                    continue
+                with PILImage.open(join(path_to_dataset,image['image_path'])) as img:
+                    w, h = img.size
+                for transcription in image['annotations']:
+                    tran_w = transcription['points'][1][0]-transcription['points'][0][0]
+                    percentage_counter.update([int(tran_w*100/w)])
+                    w_counter.update([tran_w])
+            return percentage_counter, w_counter
+                
 
         if not exists(path):
             raise FileNotFoundError(f"Le fichier {abspath(path)} n'existe pas")
@@ -166,8 +183,9 @@ class detDataset(paddleDataset):
                 raise FileNotFoundError(f"Le fichier de validation {abspath(val_path)} n'existe pas")
             
             images += load_file(val_path)
-
-        return cls(path, images)
+        dataset = cls(path, images)
+        dataset.per_counter, dataset.w_counter = create_counters(images=images, path_to_dataset=dirname(path))
+        return dataset
     
     def renderImageWithBox(self, item: int | str):
         item_dict = self[item]
