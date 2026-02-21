@@ -347,6 +347,8 @@ def change_rez_image(
 
             for unique_event in event.events:
                 unique_event.Boxes.resize(scale=ratio)
+                if unique_event.baseline_Boxes is not None:
+                    unique_event.baseline_Boxes.resize(scale=ratio)
         
         return img, event_list
     
@@ -522,6 +524,7 @@ def disturb_text(
             event: line.Dialogue,
             p_three_dots_before: float = 0.1,
             p_three_dots_after:float = 0.35,
+            p_two_dots_after:float = 0.35,
             p_point_after: float = 0.25,
             timestamp: timedelta | None = None
     ) -> line.Dialogue:
@@ -540,6 +543,15 @@ def disturb_text(
                 else:
                     text = text+'...'
                     logger.debug(f'Added three dots to text, new text : {text}')
+                    event.text = text
+            elif random.random() < p_two_dots_after and not text.endswith(("...", "…", "!", "?", ",", "..")):
+                if text.endswith('.'):
+                    text = text+'.'
+                    event.text = text
+                    logger.debug(f'Added two dots to text, new text : {text}')
+                else:
+                    text = text+'..'
+                    logger.debug(f'Added two dots to text, new text : {text}')
                     event.text = text
             elif random.random() < p_point_after and not text.endswith(("...", "…", "!", "?", '.', ",")):
                 text = text+'.'
