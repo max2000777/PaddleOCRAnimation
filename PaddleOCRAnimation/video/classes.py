@@ -11,7 +11,7 @@ from pprint import pformat
 import json
 import re
 from pathlib import Path 
-from typing import Literal
+from typing import Literal, Optional
 import os
 
 class SubTrackInfo(TypedDict):
@@ -68,6 +68,7 @@ class MKVInfo(TypedDict):
 class FrameToBoxEvent:
     Event: line.Dialogue
     Boxes: Box
+    baseline_Boxes: Optional[Box] = None
 
     def to_transcription(self):
         text = re.sub(r'\{[^}]*\}', '', self.Event.text)
@@ -235,6 +236,8 @@ class eventWithPil:
         newevents = []
         for event in self.events:
             event.Boxes.add_padding(padding=padding, image_size=new_image.size)
+            if event.baseline_Boxes is not None:
+                event.baseline_Boxes.add_padding(padding=padding, image_size=new_image.size)
             if event.Boxes.full_box != [[0, 0], [0, 0], [0, 0], [0, 0]]:
                 newevents.append(event)
         self.events = newevents
@@ -374,7 +377,10 @@ class dataset_image:
                 if prevent_karaoke and l_text > 15 and len(text) < 3:
                     # karaoke a often 99% overrides and 1 or 2 real letters
                     continue
-            dict_list.append({"transcription": text, "points": event.Boxes.full_box})
+            line_doc = {"transcription": text, "points": event.Boxes.full_box}
+            if event.baseline_Boxes is not None:
+                line_doc['baseline_points'] = event.baseline_Boxes.full_box
+            dict_list.append(line_doc)
         
         with open(path, mode='a', encoding='utf-8') as f:
             f.write(f"{Path(self.image_path).as_posix()}\t{json.dumps(dict_list, ensure_ascii=False)}\n")

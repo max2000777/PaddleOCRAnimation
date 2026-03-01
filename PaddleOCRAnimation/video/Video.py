@@ -20,9 +20,10 @@ import logging
 from .iso_codes import iso_639_dict
 from ..dataset.utilis.disturb import disturb_image, style_transform
 from .classes import eventWithPilList, eventWithPil, FrameToBoxEvent, FrameToBoxResult, SubTrackInfo
-from ..video.utilis import detect_text_line_xyxy
+from ..video.utilis import detect_text_line_xyxy, adjust_box_to_baseline
 from .sub.box import Box
 from warnings import warn
+from copy import deepcopy
 
 logger = logging.getLogger(__name__)
 
@@ -572,8 +573,10 @@ class Video:
             return sorted(boxes, key=position_cle)
         def change_box_size(
                 box: Box, event_text:str, img_size: tuple[int, int],
-                three_dots_padding: int = 3, point_padding: int =2
+                three_dots_padding: int = 0, point_padding: int =0
             ) -> Box:
+            if three_dots_padding == 0 and point_padding ==0:
+                return box
             l, t, r, b = 0, 0, 0, 0
             if event_text.endswith('...') or event_text.endswith('…'):
                 r+=three_dots_padding
@@ -628,16 +631,25 @@ class Video:
                     )
             else: 
                 boxes_list = [resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))]
-                
+            
+            adapted_box_list = []
             if use_transparency:
                 boxes_list = detect_text_line_xyxy(PIL, multiline=multiline, libass_box= boxes_list)
                 for i, box in enumerate(boxes_list):
                     boxes_list[i] = padded_box_from_xyxy(box=box, img_size=PIL.size, padding=padding)
+
+                    if not multiline:
+                        adapted_box_list.append(
+                            adjust_box_to_baseline(PIL, boxes_list[i])
+                        )
+            
             for i in range(len(events_list)):
-                changed_box = change_box_size(boxes_list[i], events_list[i].text, PIL.size)
+                changed_box = change_box_size(deepcopy(boxes_list[i]), events_list[i].text, PIL.size)
+                
                 dict_event = {
                     "Event": events_list[i],
-                    "Boxes": changed_box
+                    "Boxes": changed_box,
+                    "baseline_Boxes": adapted_box_list[i] if boxes_list else None
                 }
                 event_tuple[1].append(FrameToBoxEvent(**dict_event))
             returnliste.append(eventWithPil(image=event_tuple[0], events=event_tuple[1]))

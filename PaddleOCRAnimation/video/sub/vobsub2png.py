@@ -13,7 +13,7 @@ from ..Video import eventWithPil, FrameToBoxEvent, eventWithPilList, padded_box_
 from datetime import datetime
 from ..classes import dataset_image
 from typing import Literal
-from ..utilis import detect_text_line_xyxy
+from ..utilis import detect_text_line_xyxy, adjust_box_to_baseline
 from fractions import Fraction
 import xml.etree.ElementTree as ET
 
@@ -231,8 +231,10 @@ def vobsubpng_to_eventWithPilList(
     """
     def dynamic_padding(
             event_text: str, padding:tuple[int, int, int, int],
-            three_dots_padding: int = 3, point_padding: int = 2
+            three_dots_padding: int = 0, point_padding: int = 0
         ):
+        if three_dots_padding==0 and point_padding ==0:
+            return padding
         l, t, r, b = padding
         if event_text.endswith('...') or event_text.endswith('…'):
             r += three_dots_padding
@@ -327,7 +329,8 @@ def vobsubpng_to_eventWithPilList(
                 three_dots_padding=3, point_padding=2
             )
             b = padded_box_from_xyxy(bbox, sub_image.size, d_padding)
-            event_list.append(FrameToBoxEvent(Event=corresponding_event[j], Boxes=b))
+            baseline_b = adjust_box_to_baseline(sub_image, box=b) if multiline == False else None
+            event_list.append(FrameToBoxEvent(Event=corresponding_event[j], Boxes=b, baseline_Boxes=baseline_b))
         event_with_pil_list.append(eventWithPil(image=sub_image, events=event_list))
             
     return eventWithPilList(event_with_pil_list)

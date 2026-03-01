@@ -3,7 +3,7 @@ from os.path import exists, join, abspath, dirname, basename, splitext
 from random import shuffle
 from PIL import Image as PILImage
 from ..video.sub.RendererClean import Box
-from os import makedirs
+from os import makedirs, environ
 from tqdm.auto import tqdm
 import re
 from pathlib import Path
@@ -11,7 +11,11 @@ import warnings
 import random
 from numpy.random import normal
 from collections import Counter
-
+environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "1"
+from paddlex.inference.pipelines.components.common import CropByPolys
+from paddlex.inference.common.reader.image_reader import ReadImage
+import numpy as np
+from typing import Iterable, Mapping, Optional
 
 class paddleDataset:
     def __init__(self, path: str, images: list[dict]):
@@ -187,7 +191,7 @@ class detDataset(paddleDataset):
         dataset.per_counter, dataset.w_counter = create_counters(images=images, path_to_dataset=dirname(path))
         return dataset
     
-    def renderImageWithBox(self, item: int | str):
+    def renderImageWithBox(self, item: int | str, use_baseline_box:bool = False):
         item_dict = self[item]
 
         item_image = join(dirname(self.path), item_dict.get('image_path', None))
@@ -205,7 +209,7 @@ class detDataset(paddleDataset):
             raise ValueError(f"annotations should be a list, here {type(item_annotations)}")
         
         for annotation in item_annotations:
-            box = annotation.get('points', None)
+            box = annotation.get('points', None) if not use_baseline_box else annotation.get('baseline_points', None)
             if box is None: 
                 raise ValueError("every annotation should have a 'points' item")
             if not isinstance(box, list) or len(box) != 4 or not all(isinstance(el, list) and len(el)==2 for el in box):
@@ -256,15 +260,23 @@ class detDataset(paddleDataset):
                                      f'The {y} box of the {i} line is not')
                 
                 if not is_valid_box_content(annotation['points'], image.size):
-                    raise ValueError
-    
+                    raise ValueError(f'the box {line["image_path"]} is not standard format : {annotation["points"]}; img size : {image.size}')
+    def replace(self, text_dict: dict[str, str]):
+        for image in self:
+            for annotation in image['annotations']:
+                for replace in text_dict.keys():
+                    annotation['transcription'] = annotation['transcription'].replace(replace, text_dict[replace])
+
     def to_rec_dataset(
             self, foldername: str | None = None,
             txt_name: str | None = None, 
             traintestsplit: float | None = None,
-            p_random_tilt: float = 0.08,
-            p_random_padding: float = 0.07,
-            val_txt_name: str = 'recTest.txt'
+            # p_random_tilt: float = 0.08,
+            # p_random_padding: float = 0.07,
+            val_txt_name: str = 'recTest.txt',
+            max_text_length: int = 150,
+            min_text_length: int = 1,
+            baseline_p: float = 0.7,
         )-> None:
         """
         Génère un dataset pour la reconnaissance de texte à partir des annotations existantes.
@@ -281,19 +293,124 @@ class detDataset(paddleDataset):
             traintestsplit (float | None, optional): Proportion (0-1) des données pour l'entraînement.
                                                     Si None, aucun split n'est effectué.
             val_txt_name (str, optional): Nom du fichier texte de validation. Par défaut `recTrain.txt`.
+            max_text_length (int, optional): TODO
+            min_text_length (int, optional): TODO
 
         Raises:
             ValueError: Si `traintestsplit` est hors de [0, 1].
             ValueError: Si une annotation ne contient pas la clé 'points'.
     """
-        def normalize_box(
-                        box: list[list[int]]
-            ) -> tuple[int, int, int, int]:
-                left = min(p[0] for p in box)
-                top = min(p[1] for p in box)
-                right = max(p[0] for p in box)
-                bottom = max(p[1] for p in box)
-                return (left, top, right, bottom)
+        def randomize_box(
+                box: list[list[int]],
+                img_shape: tuple[int, int, int] | None = None,
+                p_random_padding: float = 0.35
+            )-> list[list[int]]:
+            new_box = [pt[:] for pt in box]  # copie “profonde” suffisante ici
+            for point in new_box:
+                for i in range(2):
+                    if random.random() < p_random_padding:
+                        point[i] += random.choices([3, 2, 1, -1, -2, -3], weights=[5, 10, 15, 15, 10, 5], k=1)[0]
+            
+            if img_shape is not None: 
+                h, w, _ = img_shape
+                new_box = [
+                    [
+                        max(0, new_box[0][0]),
+                        max(0, new_box[0][1])
+                    ],
+                    [
+                        min(w, new_box[1][0]),
+                        max(0, new_box[1][1])
+                    ],
+                    [
+                        min(w, new_box[2][0]),
+                        min(h, new_box[2][1])
+                    ],
+                    [
+                        max(0, new_box[3][0]),
+                        min(h, new_box[3][1])
+                    ]
+                ]
+            return new_box
+        
+        def simulate_tilt(
+                box:list[list[int]], text:str, p_tilt: float=0.2, center_band: float = 0.08,
+                max_pct: float = 0.20, min_pct: float = 0.03,
+            )-> list[list[int]]:
+            def descender_center_of_mass(
+                text: str,
+                hard_chars: Iterable[str],
+                *,
+                weights: Optional[Mapping[str, float]] = None,
+                ignore_whitespace: bool = True,
+                casefold: bool = True,
+            ) -> float:
+                """
+                Centre de masse (mu) des 'descenders' dans le texte, sur l'axe horizontal normalisé [0, 1].
+
+                - mu proche de 0   => descenders plutôt à gauche
+                - mu proche de 1   => descenders plutôt à droite
+                - mu ~ 0.5         => descenders plutôt au centre (côté peu déterminé)
+
+                Retourne None s'il n'y a aucun hard_char dans le texte.
+                """
+                hard_set = set(hard_chars)
+                wmap = weights or {}
+
+                s = text.casefold() if casefold else text
+                if ignore_whitespace:
+                    s = "".join(ch for ch in s if not ch.isspace())
+
+                n = len(s)
+                if n == 0:
+                    return 0
+
+                sum_w = 0.0
+                sum_wx = 0.0
+
+                for i, ch in enumerate(s):
+                    if ch not in hard_set:
+                        continue
+                    w = float(wmap.get(ch, 1.0))
+                    x = (i + 0.5) / n  # position normalisée dans (0, 1)
+                    sum_w += w
+                    sum_wx += w * x
+
+                return 0 if sum_w == 0.0 else (sum_wx / sum_w)
+            hard_tilt_chars = ['y', 'g', 'j', 'p', 'q', 'ç']
+            count_hard_tilt_chars = sum(1 for ch in text if ch in hard_tilt_chars)
+
+            if count_hard_tilt_chars ==0:
+                # no need to simulate tilt
+                return box
+            
+            if count_hard_tilt_chars > 1:
+                # TODO :  might be wrong if they are on the same side
+                return box
+            
+            if random.random() > p_tilt:
+                return box
+            
+            mu = descender_center_of_mass(text, ['y','g','j','p','q','ç','Ç'])
+            
+            d = mu - 0.5
+            if abs(d) <= center_band:
+                sign = random.choice([-1.0, 1.0])
+                t = 0.0
+            else:
+                sign = 1.0 if d > 0 else -1.0
+                t = (abs(d) - center_band) / (0.5 - center_band)
+
+            mag = min_pct + (max_pct - min_pct) * (t ** 1.2)
+
+            left_pct  = +mag if sign < 0 else -mag
+            right_pct = -mag if sign < 0 else +mag
+
+            box[2][1] += box[2][1]*right_pct
+            box[3][1] += box[3][1]*left_pct
+
+            return box
+
         images_not_exist = self.verify_images()
         if traintestsplit is not None and not (traintestsplit<=1 and traintestsplit>=0):
             raise ValueError(f"traintestsplit should be a float between 0 and 1 (here {traintestsplit})")
@@ -303,49 +420,30 @@ class detDataset(paddleDataset):
                         exist_ok=True
                     )
         rec_text_list=[]
-        for image in tqdm(self.images, desc="Images creation"):
-            if image.get('image_path', None) is None or image.get('image_path', None) in images_not_exist:
-                continue
+        crop_maker = CropByPolys(det_box_type="quad")
+        im_reader= ReadImage(format="BGR")
 
-            img = PILImage.open(join(dirname(self.path), image['image_path']))
-            w, h = img.size
+        existing_images = [image for image in self.images if image.get('image_path', None) not in images_not_exist]
+        
+
+        for image in tqdm(existing_images, desc="Images creation"):
+
+            img = im_reader([join(dirname(self.path), image['image_path'])])[0]
 
             for i, annotation in enumerate(image.get('annotations', [])):
+                if len(annotation['transcription']) > max_text_length or len(annotation['transcription']) < min_text_length:
+                    continue
+
                 if 'points' not in annotation:
                     raise ValueError("'points' not present in dict")
-                points = normalize_box(annotation['points'])
-
-
-
-                points = list(points)
-                if random.random() < p_random_padding:
-                    points[0] += random.choices([3, 2, 1, -1, -2], weights=[9, 12, 15, 15, 10])[0]
-                if random.random() < p_random_padding:
-                    points[1] += random.choices([3, 2, 1, -1, -2], weights=[9, 12, 15, 15, 10])[0]
-                if random.random() < p_random_padding:
-                    points[2] += random.choices([-3, -2, -1, 1, 2], weights=[9, 12, 15, 15, 10])[0]
-                if random.random() < p_random_padding:
-                    points[3] += random.choices([-3, -2, -1, 1, 2], weights=[9, 12, 15, 15, 10])[0]
                 
-                
-                if random.random() < p_random_tilt:
-                    img_copy = img.rotate(
-                        normal(loc=0, scale=0.2),
-                        expand=True,
-                        fillcolor="black"
-                    )
-                    points[1], points[3] = points[1]-1, points[3]+1
-                else:
-                    img_copy = img.copy()
-                points = (
-                    max(0, points[0]),
-                    max(0, points[1]),
-                    min(w, points[2]),
-                    min(h, points[3])
-                )
-                points = tuple(points)
+                if 'baseline_points' in annotation and random.random() < baseline_p:
+                    points=[randomize_box(annotation['baseline_points'], img_shape = img.shape)]
+                else: 
+                    points = [randomize_box(simulate_tilt(annotation['points'], text=annotation['transcription']), img_shape = img.shape)]
                 try:
-                    crop = img_copy.crop(points)
+                    crop = crop_maker(img, points)
+                    crop = PILImage.fromarray(crop[0])
                 except ValueError as e:
                     print(f'error for {basename(image["image_path"])}: {e}')
                     continue
