@@ -17,6 +17,17 @@ from paddlex.inference.common.reader.image_reader import ReadImage
 import numpy as np
 from typing import Iterable, Mapping, Optional
 
+def calculate_padding(
+                    p: float = 0.35, 
+                    padding_values: list[int]=[11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, -1, -2, -3], 
+                    weights: list[int] =      [ 1,  1,  3, 4, 5, 7, 8, 8, 6, 4, 2,  2,  3,  1], 
+                    negative: bool = False
+            ):
+                if random.random() > p:
+                    return 0
+                padding = random.choices(padding_values, weights=weights, k=1)[0]
+                return padding if not negative else - padding
+                
 class paddleDataset:
     def __init__(self, path: str, images: list[dict]):
         """
@@ -125,7 +136,7 @@ class detDataset(paddleDataset):
     """Gestion simple d'un dataset d'images pour détéction de texte avec paddle OCR."""
 
     @classmethod
-    def make_dataset(cls, path: str, val_path: str | None = None):
+    def make_dataset(cls, path: str | list, val_path: str | None = None):
         def load_file(path) -> list[dict]:
             images_temp=[]
             name_dict = {}
@@ -174,21 +185,23 @@ class detDataset(paddleDataset):
                     percentage_counter.update([int(tran_w*100/w)])
                     w_counter.update([tran_w])
             return percentage_counter, w_counter
-                
-
-        if not exists(path):
-            raise FileNotFoundError(f"Le fichier {abspath(path)} n'existe pas")
-
         images = []
-        images += load_file(path)
+        if not isinstance(path, list):
+            path = [path]
+        
+        for file in path:
+            dirnam = dirname(file)
+            if not exists(file):
+                raise FileNotFoundError(f"Le fichier {abspath(file)} n'existe pas")
+            images += load_file(file)
 
         if val_path is not None:
             if not exists(val_path):
                 raise FileNotFoundError(f"Le fichier de validation {abspath(val_path)} n'existe pas")
             
             images += load_file(val_path)
-        dataset = cls(path, images)
-        dataset.per_counter, dataset.w_counter = create_counters(images=images, path_to_dataset=dirname(path))
+        dataset = cls(file, images)
+        dataset.per_counter, dataset.w_counter = create_counters(images=images, path_to_dataset=dirname(file))
         return dataset
     
     def renderImageWithBox(self, item: int | str, use_baseline_box:bool = False):
@@ -268,7 +281,8 @@ class detDataset(paddleDataset):
                     annotation['transcription'] = annotation['transcription'].replace(replace, text_dict[replace])
 
     def to_rec_dataset(
-            self, foldername: str | None = None,
+            self, 
+            foldername: str | None = None,
             txt_name: str | None = None, 
             traintestsplit: float | None = None,
             # p_random_tilt: float = 0.08,
@@ -276,7 +290,9 @@ class detDataset(paddleDataset):
             val_txt_name: str = 'recTest.txt',
             max_text_length: int = 150,
             min_text_length: int = 1,
-            baseline_p: float = 0.7,
+            baseline_p: float = 0.4,
+            split_train_test_folder: bool = True,
+            test_foldername:str | None = None,
         )-> None:
         """
         Génère un dataset pour la reconnaissance de texte à partir des annotations existantes.
@@ -295,24 +311,80 @@ class detDataset(paddleDataset):
             val_txt_name (str, optional): Nom du fichier texte de validation. Par défaut `recTrain.txt`.
             max_text_length (int, optional): TODO
             min_text_length (int, optional): TODO
+            split_train_test_folder (bool, optional): TODO
 
         Raises:
             ValueError: Si `traintestsplit` est hors de [0, 1].
             ValueError: Si une annotation ne contient pas la clé 'points'.
     """
-        def randomize_box(
+        def randomize__each_point(
                 box: list[list[int]],
                 img_shape: tuple[int, int, int] | None = None,
-                p_random_padding: float = 0.35
+                p_random_padding: float = 0.25
             )-> list[list[int]]:
-            new_box = [pt[:] for pt in box]  # copie “profonde” suffisante ici
-            for point in new_box:
-                for i in range(2):
-                    if random.random() < p_random_padding:
-                        point[i] += random.choices([3, 2, 1, -1, -2, -3], weights=[5, 10, 15, 15, 10, 5], k=1)[0]
-            
+                    
+            new_box = [pt[:] for pt in box]
+
+            top_left, top_right, bottom_right, bottom_left = new_box[0], new_box[1], new_box[2], new_box[3]
+
+            padding_values = [5, 4, 3, 2, 1, -1, -2, -3, -4]
+            weights =        [1, 3, 4, 3, 2,  2,  3,  2,  1]
+
+            top_left[0] += calculate_padding(negative=True, p=p_random_padding, padding_values=padding_values, weights=weights)
+            top_left[1] += calculate_padding(negative=True, p=p_random_padding, padding_values=padding_values, weights=weights)
+
+            top_right[0] += calculate_padding(p=p_random_padding, padding_values=padding_values, weights=weights)
+            top_right[1] += calculate_padding(negative=True, p=p_random_padding, padding_values=padding_values, weights=weights)
+
+            bottom_right[0] += calculate_padding(p=p_random_padding, padding_values=padding_values, weights=weights)
+            bottom_right[1] += calculate_padding(p=p_random_padding, padding_values=padding_values, weights=weights)
+
+            bottom_left[0] += calculate_padding(negative=True, p=p_random_padding, padding_values=padding_values, weights=weights)
+            bottom_left[1] += calculate_padding(p=p_random_padding, padding_values=padding_values, weights=weights)
+
             if img_shape is not None: 
                 h, w, _ = img_shape
+                new_box = [
+                    [
+                        max(0, top_left[0]),
+                        max(0, top_left[1])
+                    ],
+                    [
+                        min(w, top_right[0]),
+                        max(0, top_right[1])
+                    ],
+                    [
+                        min(w, bottom_right[0]),
+                        min(h, bottom_right[1])
+                    ],
+                    [
+                        max(0, bottom_left[0]),
+                        min(h, bottom_left[1])
+                    ]
+                ]
+            else: 
+                new_box = [top_left, top_right, bottom_right, bottom_left]
+            return new_box
+
+        def randomize_padding_each_side(
+            box: list[list[int]],
+            img_shape: tuple[int, int, int] | None = None,
+            p_side: float = 0.8
+        ) -> list[list[int]]:
+            new_box = [pt[:] for pt in box]
+
+            # left, top, right, bottom
+            for (i1, j1), (i2, j2), negative in [
+                ((0, 0), (3, 0), True),
+                ((0, 1), (1, 1), True),
+                ((1, 0), (2, 0), False),
+                ((2, 1), (3, 1), False),
+            ]:
+                padding = calculate_padding(p=p_side, negative=negative)
+                new_box[i1][j1] += padding
+                new_box[i2][j2] += padding
+            if img_shape is not None: 
+                h, w= img_shape[:2]
                 new_box = [
                     [
                         max(0, new_box[0][0]),
@@ -334,83 +406,37 @@ class detDataset(paddleDataset):
             return new_box
         
         def simulate_tilt(
-                box:list[list[int]], text:str, p_tilt: float=0.2, center_band: float = 0.08,
-                max_pct: float = 0.20, min_pct: float = 0.03,
+                box:list[list[int]], p_tilt: float=0.1,
+                img_shape: tuple[int, int, int] = (99999, 99999, 0),
             )-> list[list[int]]:
-            def descender_center_of_mass(
-                text: str,
-                hard_chars: Iterable[str],
-                *,
-                weights: Optional[Mapping[str, float]] = None,
-                ignore_whitespace: bool = True,
-                casefold: bool = True,
-            ) -> float:
-                """
-                Centre de masse (mu) des 'descenders' dans le texte, sur l'axe horizontal normalisé [0, 1].
-
-                - mu proche de 0   => descenders plutôt à gauche
-                - mu proche de 1   => descenders plutôt à droite
-                - mu ~ 0.5         => descenders plutôt au centre (côté peu déterminé)
-
-                Retourne None s'il n'y a aucun hard_char dans le texte.
-                """
-                hard_set = set(hard_chars)
-                wmap = weights or {}
-
-                s = text.casefold() if casefold else text
-                if ignore_whitespace:
-                    s = "".join(ch for ch in s if not ch.isspace())
-
-                n = len(s)
-                if n == 0:
-                    return 0
-
-                sum_w = 0.0
-                sum_wx = 0.0
-
-                for i, ch in enumerate(s):
-                    if ch not in hard_set:
-                        continue
-                    w = float(wmap.get(ch, 1.0))
-                    x = (i + 0.5) / n  # position normalisée dans (0, 1)
-                    sum_w += w
-                    sum_wx += w * x
-
-                return 0 if sum_w == 0.0 else (sum_wx / sum_w)
-            hard_tilt_chars = ['y', 'g', 'j', 'p', 'q', 'ç']
-            count_hard_tilt_chars = sum(1 for ch in text if ch in hard_tilt_chars)
-
-            if count_hard_tilt_chars ==0:
-                # no need to simulate tilt
+            if random.random() > 0.2:
                 return box
+            h, w= img_shape[:2]
+            new_box = [pt[:] for pt in box]
+            negative = random.random() >0.5
+            padding_values = [1, 2, 3, 4]
+            weights =        [3, 4, 3, 1]
+
+            padding = calculate_padding(p=p_tilt, padding_values=padding_values, weights=weights, negative=negative)
+
+            new_box[0][1] = max(0, new_box[0][1]+padding)
+            new_box[3][1] = min(h, new_box[3][1]+ padding)
+
+            new_box[1][1]= max(0, new_box[1][1]-padding)
+            new_box[2][1] = min(h, new_box[2][1]- padding)
             
-            if count_hard_tilt_chars > 1:
-                # TODO :  might be wrong if they are on the same side
-                return box
-            
-            if random.random() > p_tilt:
-                return box
-            
-            mu = descender_center_of_mass(text, ['y','g','j','p','q','ç','Ç'])
-            
-            d = mu - 0.5
-            if abs(d) <= center_band:
-                sign = random.choice([-1.0, 1.0])
-                t = 0.0
-            else:
-                sign = 1.0 if d > 0 else -1.0
-                t = (abs(d) - center_band) / (0.5 - center_band)
 
-            mag = min_pct + (max_pct - min_pct) * (t ** 1.2)
-
-            left_pct  = +mag if sign < 0 else -mag
-            right_pct = -mag if sign < 0 else +mag
-
-            box[2][1] += box[2][1]*right_pct
-            box[3][1] += box[3][1]*left_pct
-
-            return box
-
+            return new_box
+        
+        if traintestsplit is not None:
+            assert isinstance(traintestsplit, float)
+            assert 0<=traintestsplit<=1
+        
+        if foldername is None and not split_train_test_folder:
+            foldername = 'rec_images'
+        if split_train_test_folder:
+            foldername = 'rec_images_train' if foldername is None else foldername
+            test_foldername = 'rec_images_test' if test_foldername is None else test_foldername
         images_not_exist = self.verify_images()
         if traintestsplit is not None and not (traintestsplit<=1 and traintestsplit>=0):
             raise ValueError(f"traintestsplit should be a float between 0 and 1 (here {traintestsplit})")
@@ -419,7 +445,8 @@ class detDataset(paddleDataset):
                         join(dirname(self.path), foldername),
                         exist_ok=True
                     )
-        rec_text_list=[]
+        if traintestsplit is not None and traintestsplit<1 and test_foldername is not None:
+            makedirs(join(dirname(self.path), test_foldername))
         crop_maker = CropByPolys(det_box_type="quad")
         im_reader= ReadImage(format="BGR")
 
@@ -431,16 +458,31 @@ class detDataset(paddleDataset):
             img = im_reader([join(dirname(self.path), image['image_path'])])[0]
 
             for i, annotation in enumerate(image.get('annotations', [])):
-                if len(annotation['transcription']) > max_text_length or len(annotation['transcription']) < min_text_length:
+                if annotation['transcription'] == '###' or len(annotation['transcription']) > max_text_length or len(annotation['transcription']) < min_text_length:
                     continue
 
                 if 'points' not in annotation:
                     raise ValueError("'points' not present in dict")
                 
                 if 'baseline_points' in annotation and random.random() < baseline_p:
-                    points=[randomize_box(annotation['baseline_points'], img_shape = img.shape)]
+                    points=[
+                        randomize__each_point(
+                            randomize_padding_each_side(
+                                annotation['baseline_points'], img_shape = img.shape
+                            ), img_shape=img.shape
+                        )
+                    ]
                 else: 
-                    points = [randomize_box(simulate_tilt(annotation['points'], text=annotation['transcription']), img_shape = img.shape)]
+                    points = [
+                        randomize__each_point(
+                            simulate_tilt(
+                                randomize_padding_each_side(
+                                    box=annotation['points'],
+                                    img_shape = img.shape
+                                ), img_shape=img.shape
+                            )
+                        )
+                    ]
                 try:
                     crop = crop_maker(img, points)
                     crop = PILImage.fromarray(crop[0])
@@ -448,11 +490,12 @@ class detDataset(paddleDataset):
                     print(f'error for {basename(image["image_path"])}: {e}')
                     continue
 
-
+                test = random.random()> traintestsplit if traintestsplit is not None else False
+                temp_foldername = test_foldername if test else foldername
                 rel_path = join(
-                    foldername,
+                    temp_foldername,
                     f"{splitext(basename(image['image_path']))[0]}_{i}{splitext(basename(image['image_path']))[1]}"
-                ) if foldername is not None else f"{splitext(basename(image['image_path']))[0]}_{i}{splitext(basename(image['image_path']))[1]}"
+                ) if temp_foldername is not None else f"{splitext(basename(image['image_path']))[0]}_{i}{splitext(basename(image['image_path']))[1]}"
 
                 text = annotation['transcription']
                 text = re.sub(r'\{.*?\}', '', text)
@@ -463,17 +506,17 @@ class detDataset(paddleDataset):
                     print(f'error for {basename(image["image_path"])}: {e}')
                     continue
                 else:
-                    rec_text_list.append(f"{Path(rel_path).as_posix()}\t{text}")
-        if traintestsplit is None:
-            with open(join(dirname(self.path), "rec.txt" if not txt_name else txt_name), 'w', encoding="utf-8") as f:
-                f.write('\n'.join(rec_text_list))
-        else: 
-            shuffle(rec_text_list)
-            with open(join(dirname(self.path), "recTrain.txt" if not txt_name else txt_name), 'w', encoding="utf-8") as f:
-                f.write('\n'.join(rec_text_list[:int(traintestsplit*len(rec_text_list))]))
-
-            with open(join(dirname(self.path),val_txt_name), 'w', encoding="utf-8") as f:
-                f.write('\n'.join(rec_text_list[int(traintestsplit*len(rec_text_list)):]))
+                    rec_text =f"{Path(rel_path).as_posix()}\t{text}\n"
+                
+                if traintestsplit is None:
+                    with open(join(dirname(self.path), "rec.txt" if not txt_name else txt_name), 'a', encoding="utf-8") as f:
+                        f.write(rec_text)
+                elif test:
+                    with open(join(dirname(self.path), val_txt_name), 'a', encoding="utf-8") as f:
+                        f.write(rec_text)
+                else: 
+                    with open(join(dirname(self.path), "recTrain.txt" if not txt_name else txt_name), 'a', encoding="utf-8") as f:
+                        f.write(rec_text)
 
     def save_dataframe(self, path: str, data):
         with open(path, 'w', encoding='utf-8') as f:
