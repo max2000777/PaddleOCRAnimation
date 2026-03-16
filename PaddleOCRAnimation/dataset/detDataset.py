@@ -106,7 +106,9 @@ class paddleDataset:
         ... # should be defined by subclass
     def makeTrainTest(
         self, trainProp: float = 0.8,
-        trainName: str = 'detTrain.txt', testName: str = 'detTest.txt'
+        trainName: str = 'detTrain.txt',
+        testName: str = 'detTest.txt',
+        
     ):
         """
         Sépare le dataset en train et test et écrit deux fichiers.
@@ -116,8 +118,6 @@ class paddleDataset:
             trainName (str, optional): Nom du fichier d'entraînement généré. Par défaut 'train.txt'.
             testName (str, optional): Nom du fichier de test généré. Par défaut 'test.txt'.
         """
-
-
         missing = self.verify_images()
 
         real_images = [image for image in self.images if image['image_path'] not in missing]
@@ -147,14 +147,11 @@ class detDataset(paddleDataset):
                     line = line.strip()
                     if not line:
                         continue
-                    # séparation chemin et annotations
                     try:
                         img_path, ann_json = line.split('\t', 1)
                     except ValueError:
                         # ligne mal formée (pas de tab)
                         continue
-
-                    # parse annotations JSON
                     try:
                         annotations = json.loads(ann_json)
                     except json.JSONDecodeError:
@@ -282,8 +279,10 @@ class detDataset(paddleDataset):
 
     def to_rec_dataset(
             self, 
-            foldername: str | None = None,
+            images_folder_path: str | None = None,
+            test_images_folder_path: str | None = None,
             txt_name: str | None = None, 
+            test_txt_name: str | None = None,
             traintestsplit: float | None = None,
             # p_random_tilt: float = 0.08,
             # p_random_padding: float = 0.07,
@@ -292,7 +291,8 @@ class detDataset(paddleDataset):
             min_text_length: int = 1,
             baseline_p: float = 0.4,
             split_train_test_folder: bool = True,
-            test_foldername:str | None = None,
+            split_train_test_txt: bool = True,
+            dataset_root_path: str | None = None,
         )-> None:
         """
         Génère un dataset pour la reconnaissance de texte à partir des annotations existantes.
@@ -317,6 +317,51 @@ class detDataset(paddleDataset):
             ValueError: Si `traintestsplit` est hors de [0, 1].
             ValueError: Si une annotation ne contient pas la clé 'points'.
     """
+        def resolve_output_paths(
+                images_folder_path: str | Path | None,
+                test_images_folder_path: str | Path | None,
+                split_train_test_folder: bool,
+                traintestsplit: float | None,
+                txt_name: str | None,
+                test_txt_name: str | None,
+                split_train_test_txt: bool,
+                dataset_root_path: str | Path | None,
+                self_txt_path: str
+        )-> tuple[str, str, str, str]:
+            if traintestsplit is not None and (not isinstance(traintestsplit, float) or traintestsplit > 1 or traintestsplit <0):
+                raise ValueError(f'traintestsplit should be a float between 0 and 1')
+            
+            dataset_root_path = join(dirname(self_txt_path), 'rec_images') if dataset_root_path is None else dataset_root_path
+            if exists(dataset_root_path) and not Path(dataset_root_path).is_dir():
+                raise ValueError('dataset_root_path should point to a directory, not a file')
+            
+            if not split_train_test_folder or traintestsplit is None:
+                images_folder_path = images_folder_path if images_folder_path is not None else dataset_root_path
+                test_images_folder_path = images_folder_path
+            else: 
+                images_folder_path = join(dataset_root_path, 'train') if images_folder_path is None else images_folder_path
+                test_images_folder_path = join(dataset_root_path, 'test') if test_images_folder_path is None else test_images_folder_path
+
+            # TODO : test if txt name is a file name
+            if not split_train_test_txt or traintestsplit is None:
+                txt_name= join(dirname(images_folder_path), 'rec_images.txt') if txt_name is None else join(dirname(images_folder_path), txt_name)
+                test_txt_name = txt_name
+            else: 
+                txt_name= join(dirname(images_folder_path), 'recTrain.txt') if txt_name is None else join(dirname(images_folder_path), txt_name)
+                test_txt_name = join(dirname(test_images_folder_path), 'recTest.txt') if test_txt_name is None else join(dirname(test_images_folder_path), test_txt_name)
+            
+            for dir in [images_folder_path, test_images_folder_path]:
+                p = Path(dir)
+                if p.exists() and not p.is_dir():
+                    raise ValueError(f'{p.absolute()} is not a directory')
+                p.mkdir(parents=True, exist_ok=True)
+            
+            return str(images_folder_path), str(test_images_folder_path), str(txt_name), str(test_txt_name)
+
+
+
+            
+
         def randomize__each_point(
                 box: list[list[int]],
                 img_shape: tuple[int, int, int] | None = None,
@@ -428,25 +473,18 @@ class detDataset(paddleDataset):
 
             return new_box
         
+        images_folder_path, test_images_folder_path, txt_name, test_txt_name = resolve_output_paths(images_folder_path=images_folder_path,
+                             test_images_folder_path=test_images_folder_path,
+                             txt_name=txt_name, test_txt_name=test_txt_name,
+                             split_train_test_folder=split_train_test_folder,
+                             traintestsplit=traintestsplit,dataset_root_path=dataset_root_path,
+                             self_txt_path=self.path, split_train_test_txt=split_train_test_txt)
         if traintestsplit is not None:
             assert isinstance(traintestsplit, float)
             assert 0<=traintestsplit<=1
         
-        if foldername is None and not split_train_test_folder:
-            foldername = 'rec_images'
-        if split_train_test_folder:
-            foldername = 'rec_images_train' if foldername is None else foldername
-            test_foldername = 'rec_images_test' if test_foldername is None else test_foldername
         images_not_exist = self.verify_images()
-        if traintestsplit is not None and not (traintestsplit<=1 and traintestsplit>=0):
-            raise ValueError(f"traintestsplit should be a float between 0 and 1 (here {traintestsplit})")
-        if foldername is not None:
-            makedirs(
-                        join(dirname(self.path), foldername),
-                        exist_ok=True
-                    )
-        if traintestsplit is not None and traintestsplit<1 and test_foldername is not None:
-            makedirs(join(dirname(self.path), test_foldername))
+
         crop_maker = CropByPolys(det_box_type="quad")
         im_reader= ReadImage(format="BGR")
 
@@ -491,7 +529,8 @@ class detDataset(paddleDataset):
                     continue
 
                 test = random.random()> traintestsplit if traintestsplit is not None else False
-                temp_foldername = test_foldername if test else foldername
+                temp_foldername = test_images_folder_path if test else images_folder_path
+                temp_txtname = test_txt_name if test else txt_name
                 rel_path = join(
                     temp_foldername,
                     f"{splitext(basename(image['image_path']))[0]}_{i}{splitext(basename(image['image_path']))[1]}"
@@ -499,24 +538,18 @@ class detDataset(paddleDataset):
 
                 text = annotation['transcription']
                 text = re.sub(r'\{.*?\}', '', text)
-                
+                temp_image_path=join(dirname(self.path), rel_path)
                 try:
-                    crop.save(join(dirname(self.path), rel_path))
+                    crop.save(temp_image_path)
                 except SystemError as e:
                     print(f'error for {basename(image["image_path"])}: {e}')
                     continue
                 else:
-                    rec_text =f"{Path(rel_path).as_posix()}\t{text}\n"
+                    rec_text =f"{Path(temp_image_path).resolve().relative_to(Path(temp_txtname).resolve().parent)}\t{text}\n"
                 
-                if traintestsplit is None:
-                    with open(join(dirname(self.path), "rec.txt" if not txt_name else txt_name), 'a', encoding="utf-8") as f:
-                        f.write(rec_text)
-                elif test:
-                    with open(join(dirname(self.path), val_txt_name), 'a', encoding="utf-8") as f:
-                        f.write(rec_text)
-                else: 
-                    with open(join(dirname(self.path), "recTrain.txt" if not txt_name else txt_name), 'a', encoding="utf-8") as f:
-                        f.write(rec_text)
+                with open(join(dirname(self.path), temp_txtname), 'a', encoding="utf-8") as f:
+                    f.write(rec_text)
+    
 
     def save_dataframe(self, path: str, data):
         with open(path, 'w', encoding='utf-8') as f:

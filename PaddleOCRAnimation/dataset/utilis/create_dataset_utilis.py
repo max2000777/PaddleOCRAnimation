@@ -16,6 +16,7 @@ from .events_to_dataset import small_images_to_dataset, big_images_to_dataset
 import sys
 from collections import Counter
 import threading
+import random
 
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,56 @@ def find_dominant_style(
     logger.debug(f'The dominant style was {dom_style}, {style_counts[dom_style]} ev')
     return dom_style
 
-        
+def get_annotation_txt_paths(
+        train_test_split: float | None,
+        image_save_path: str | Path,
+        no_text_image_save_path: str | Path,
+        test_image_save_path: str | Path, 
+        test_no_text_image_save_path: str | Path,
+        split_text_nontext_datasets_txt: bool = True,
+    )-> tuple[str, str, str, str]:
+    if train_test_split is not None and split_text_nontext_datasets_txt:
+        txt_dataset_train_text = Path(image_save_path).parent / 'detImages_train_text.txt'
+        txt_dataset_test_text = Path(test_image_save_path).parent / 'detImages_test_text.txt'
+        txt_dataset_train_notext = Path(no_text_image_save_path).parent / 'detImages_train_noText.txt'
+        txt_dataset_test_notext = Path(test_no_text_image_save_path).parent / 'detImages_test_noText.txt'
+    elif train_test_split is None and split_text_nontext_datasets_txt:
+        txt_dataset_train_text = Path(image_save_path).parent / 'detImages_text.txt'
+        txt_dataset_test_text = Path(test_image_save_path).parent / 'detImages_text.txt'
+        txt_dataset_train_notext = Path(no_text_image_save_path).parent / 'detImages_noText.txt'
+        txt_dataset_test_notext = Path(test_no_text_image_save_path).parent / 'detImages_noText.txt'
+    elif train_test_split is not None and not split_text_nontext_datasets_txt:
+        txt_dataset_train_text = Path(image_save_path).parent / 'detImages_train.txt'
+        txt_dataset_test_text = Path(test_image_save_path).parent / 'detImages_test.txt'
+        txt_dataset_train_notext = Path(no_text_image_save_path).parent / 'detImages_train.txt'
+        txt_dataset_test_notext = Path(test_no_text_image_save_path).parent / 'detImages_test.txt'
+    else: 
+        txt_dataset_train_text = Path(image_save_path).parent / 'detImages.txt'
+        txt_dataset_test_text = Path(test_image_save_path).parent / 'detImages.txt'
+        txt_dataset_train_notext = Path(no_text_image_save_path).parent / 'detImages.txt'
+        txt_dataset_test_notext = Path(test_no_text_image_save_path).parent / 'detImages.txt'
+    
+    return str(txt_dataset_train_text), str(txt_dataset_test_text), str(txt_dataset_train_notext), str(txt_dataset_test_notext)
+
+def choose_anotation_path(
+        image:dataset_image, txt_dataset_train_text: str | Path, 
+        txt_dataset_test_text: str | Path, txt_dataset_train_notext: str | Path, 
+        txt_dataset_test_notext: str,
+) -> str:
+    n_boxes = 0
+    for event in image.event_list:
+            if event.Boxes.full_box != [[0, 0], [0, 0], [0, 0], [0, 0]]:
+                n_boxes +=1
+    no_text = n_boxes == 0
+    if image.test and no_text:
+        return str(txt_dataset_test_notext)
+    elif image.test and not no_text:
+        return str(txt_dataset_test_text)
+    elif not image.test and no_text:
+        return str(txt_dataset_train_notext)
+    else: 
+        return str(txt_dataset_train_text)
+    
 
 def dataset_metadata_before(
         dataset_path: str,
@@ -195,11 +245,14 @@ def select_timings(duration_sec:float, p:float=0.01, precision:float=0.1) -> lis
 
 def timing_to_dataset(
         timing_sec:float, vid:Video, selected_sub_id: int,
-        no_text_image_save_path: str | Path, dataset_path: str | Path,
+        no_text_image_save_path: str | Path, 
+        test_image_save_path: str | Path, test_no_text_image_save_path: str | Path,
+        dataset_path: str | Path,
         image_save_path: str | Path, multiline: bool = False,
         padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.005, 0.1, 0.005, 0.1),
         dominant_style: str = 'Default',
-        use_transparency: bool = True
+        use_transparency: bool = True,
+        train_test_split: float | None = None,
     )-> list[dataset_image]:
     """
     Generates one or more dataset images for a specific video timestamp.
@@ -236,6 +289,12 @@ def timing_to_dataset(
     vid_name = Path(vid.path).stem
     n_event_in_frame, event_section = vid.docs[selected_sub_id].nb_event_dans_frame(timedelta(seconds=timing_sec), returnEvents=True)
 
+    is_test = False if train_test_split is None else random.random() > train_test_split 
+    if is_test:
+        no_text_image_save_path = test_no_text_image_save_path
+        image_save_path = test_image_save_path
+
+
     
     background = vid.extract_frame_as_pil(timing_sec)
     if n_event_in_frame == 0:
@@ -246,8 +305,10 @@ def timing_to_dataset(
         background.save(image_name)
         return [
             dataset_image(
-                image_path=os.path.relpath(image_name, dataset_path),
-                event_list=[])
+                image_path=image_name,
+                event_list=[],
+                test=is_test
+            )
         ]
     
     ctx = Context()
@@ -279,20 +340,23 @@ def timing_to_dataset(
 
     return_dataset_image_list = [
         dataset_image(
-            image_path=os.path.relpath(image_name, dataset_path),
-            event_list=return_event_list
+            image_path=os.path.abspath(image_name),
+            event_list=return_event_list,
+            test=is_test
     )]
 
     return_dataset_image_list += small_images_to_dataset(
         timestamp=timing_sec, video=vid, r=r,
         dataset_path=str(dataset_path), image_save_path=str(image_save_path),
         ctx=ctx, multiline=multiline, sub_id=selected_sub_id,
-        padding= padding
+        padding= padding, 
+        is_test=is_test
     )    
 
     return_dataset_image_list += big_images_to_dataset(
         events_with_pil=events_with_pil, dataset_path=str(dataset_path), image_save_path= str(image_save_path),
-        vid_name= vid_name, sub_id=selected_sub_id, timestamp= timing_sec
+        vid_name= vid_name, sub_id=selected_sub_id, timestamp= timing_sec,
+        is_test=is_test
     )
 
     return return_dataset_image_list
@@ -333,12 +397,16 @@ def video_to_dataset(
         extracted_sub_path: str | Path,
         attachement_path: str | Path,
         no_text_image_save_path: str | Path,
+        test_image_save_path:str|Path,
+        test_no_text_image_save_path:str|Path,
         dataset_path: str | Path,
         save_format: Literal['PaddleOCR'] = 'PaddleOCR',
         preferd_sub_language: str = 'fre', p_timing: float = 0.005,
         padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.01, 0.1, 0.01, 0.1),
         multiline: bool = False,
         use_transparency: bool = True,
+        train_test_split: float | None = None,
+        split_text_nontext_datasets_txt: bool = False
 ) -> tuple[int, int]:
     """
     Extracts subtitle-based training data from an MKV video and saves it as a dataset.
@@ -449,6 +517,11 @@ def video_to_dataset(
         p=p_timing
     )
 
+    txt_dataset_train_text, txt_dataset_test_text, txt_dataset_train_notext, txt_dataset_test_notext =get_annotation_txt_paths(
+        train_test_split=train_test_split, image_save_path=image_save_path,
+        no_text_image_save_path=no_text_image_save_path, test_image_save_path=test_image_save_path,
+        test_no_text_image_save_path=test_no_text_image_save_path, split_text_nontext_datasets_txt=split_text_nontext_datasets_txt
+    )
     dataset_file = os.path.join(dataset_path, 'dataset.txt')
 
     executor = ThreadPoolExecutor(max_workers=50)
@@ -468,6 +541,9 @@ def video_to_dataset(
             padding=padding,
             dominant_style=dom_style,
             use_transparency=use_transparency,
+            test_image_save_path=test_image_save_path,
+            test_no_text_image_save_path=test_no_text_image_save_path,
+            train_test_split=train_test_split,
         ) for timing in timings]
     
     n_text_image, n_no_text_image = 0, 0
@@ -475,6 +551,11 @@ def video_to_dataset(
         try:
             timing_results= t.result()
             for image in timing_results:
+                dataset_file = choose_anotation_path(
+                    image=image, txt_dataset_train_text=txt_dataset_train_text, 
+                    txt_dataset_test_text=txt_dataset_test_text, txt_dataset_train_notext=txt_dataset_train_notext, 
+                    txt_dataset_test_notext=txt_dataset_test_notext
+                )
                 image.to_text(path=dataset_file, format= save_format)
                 if image.event_list:
                     n_text_image += 1
@@ -486,6 +567,7 @@ def video_to_dataset(
             logger.error(f'{Path(video_path).stem} : {l}')
         except Exception as e:
             logger.error(f'{Path(video_path).stem} : Error during result opening {e}')
+            # raise
 
     
     after_video_to_dataset_cleanup(

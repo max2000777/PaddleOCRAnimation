@@ -2,7 +2,7 @@ from ...video.Video import Video
 from ...video.sub.RendererClean import Renderer, Context
 import random
 from pathlib import Path
-from os.path import join, relpath
+from os.path import join, abspath, dirname
 from ...video.classes import dataset_image, eventWithPilList, FrameToBoxEvent
 from .disturb import disturb_eventWithPil
 import logging 
@@ -18,6 +18,7 @@ def small_images_to_dataset(
         sub_id: int = 0,
         p: float = 0.15,
         padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.005, 0.1, 0.005, 0.1),
+        is_test: bool = False,
 ) -> list[dataset_image]:
     vid_name = Path(video.path).stem
     if random.random()>p:
@@ -32,8 +33,9 @@ def small_images_to_dataset(
         event = disturb_eventWithPil(event)
         event.image.save(save_path)
         return_list.append(dataset_image(
-            image_path=relpath(save_path, dataset_path),
-            event_list=event.events
+            image_path=abspath(save_path),
+            event_list=event.events,
+            test=is_test
         ))
     return return_list
 
@@ -41,7 +43,8 @@ def big_images_to_dataset(
         events_with_pil:eventWithPilList,
         dataset_path: str, image_save_path: str,
         vid_name: str, sub_id: int, timestamp: float,
-        p:float = 0.2
+        p:float = 0.2,
+        is_test:bool = False,
     ) -> list[dataset_image]:
     """Generates and saves a dataset image from subtitle events.
 
@@ -74,7 +77,7 @@ def big_images_to_dataset(
     
     events_with_pil.to_pil(show_boxes=False).save(save_path)
 
-    return [dataset_image(image_path=relpath(save_path, dataset_path), event_list=return_list)]
+    return [dataset_image(image_path=abspath(save_path), event_list=return_list, test=is_test)]
 
 
 

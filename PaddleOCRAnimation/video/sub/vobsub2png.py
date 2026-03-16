@@ -16,6 +16,7 @@ from typing import Literal
 from ..utilis import detect_text_line_xyxy, adjust_box_to_baseline
 from fractions import Fraction
 import xml.etree.ElementTree as ET
+import random
 
 
 
@@ -341,11 +342,15 @@ def vobsubpng_to_dataset(
         root_dataset_path: str | Path,
         path_to_vobsubpng_folder: str | Path,
         path_to_sub: str | Path, 
+        train_test_split: float | None = None,
         image_save_path: str | Path | None = None,
+        test_image_save_path: str | Path | None = None,
         dataset_txt: str | Path | None = None,
+        test_dataset_txt: str | Path | None = None,
         multiline: bool = True,
         padding: tuple[int,int,int,int] | float = (1, 1, 1, 1),
         format: Literal['PaddleOCR'] = 'PaddleOCR',
+        
 ) -> None:
     """
     Convert a folder of VobSub PNG subtitles into a structured text detection dataset.
@@ -417,15 +422,26 @@ def vobsubpng_to_dataset(
             f.write(f'Save format: {format}\n')
             f.write(f'Images added: {n_text_images} (text: {n_text_images}, no_text: 0)\n')
             f.write('========================================\n')
-    if image_save_path is None : 
-        image_save_path = join(str(root_dataset_path), 'det_images', 'text')
+    if train_test_split is not None and (not isinstance(train_test_split, float) or train_test_split >1 or train_test_split <0):
+        raise ValueError(f'train_test_split should be a float between 0 and 1 (here {train_test_split})')
+    
+    if image_save_path is None: 
+        image_save_path = join(str(root_dataset_path), 'det_images', 'text') if train_test_split is None else join(str(root_dataset_path), 'det_images','train', 'text')
+    if test_image_save_path is None:
+        test_image_save_path = join(str(root_dataset_path), 'det_images','test' ,'text')
     if not exists(image_save_path):
         makedirs(image_save_path, exist_ok=True)
+    if train_test_split is not None and not exists(test_image_save_path):
+        makedirs(test_image_save_path, exist_ok=True)
     if dataset_txt is None: 
-        dataset_txt = join(str(root_dataset_path), 'dataset.txt')
+        dataset_txt = join(str(root_dataset_path), 'dataset.txt') if train_test_split is None else join(str(root_dataset_path),'train', 'detImages_train_text.txt')
+    if test_dataset_txt is None:
+        test_dataset_txt = join(str(root_dataset_path),'test', 'detImages_test_text.txt')
+    
+
+    
     
     sub_name = Path(path_to_sub).stem
-    image_dataset_path = relpath(image_save_path, root_dataset_path)
     eventWithPillist = vobsubpng_to_eventWithPilList(
         path_to_sub=path_to_sub,
         path_to_vobsubpng_folder=path_to_vobsubpng_folder,
@@ -434,16 +450,20 @@ def vobsubpng_to_dataset(
     )
 
     for event in eventWithPillist:
+        is_test = False if train_test_split is None else random.random()>train_test_split
+
+        temp_dataset_txt = test_dataset_txt if is_test else dataset_txt
+        temp_image_save_path = test_image_save_path if is_test else image_save_path
         image_name = f'{sub_name}_sVOB_t{event.events[0].Event.start.total_seconds()}.png'
-        event.image.save(join(str(image_save_path), image_name))
+        event.image.save(join(str(temp_image_save_path), image_name))
 
         event_dataset_image = dataset_image(
-            image_path=join(image_dataset_path, image_name),
+            image_path=join(temp_image_save_path, image_name),
             event_list=event.events
         )
 
         event_dataset_image.to_text(
-            path=dataset_txt,
+            path=temp_dataset_txt,
             format=format
         )
     

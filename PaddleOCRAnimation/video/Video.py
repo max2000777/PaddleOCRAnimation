@@ -622,13 +622,6 @@ class Video:
                     resultats_libass.to_singleline_boxes(padding=padding if not use_transparency else (0, 0, 0, 0),
                                                          xy_offset=(smallest_dist_x, smallest_dist_y))
                 )
-                if len(events_list) != len(boxes_list):
-                    vid_name = basename(self.path)
-                    raise lineBreakError(
-                        f"'{vid_name}', {timestamp} : there should be the same number of line than the number of boxes "
-                        f"(here {len(events_list)} lines and {len(boxes_list)} boxes).\n"
-                        "This is most likely due to libass automatic line break when the text is too long"
-                    )
             else: 
                 boxes_list = [resultats_libass.to_box(padding=padding, xy_offset=(smallest_dist_x, smallest_dist_y))]
             
@@ -642,7 +635,13 @@ class Video:
                         adapted_box_list.append(
                             adjust_box_to_baseline(PIL, boxes_list[i])
                         )
-            
+            if len(events_list) != len(boxes_list):
+                    vid_name = basename(self.path)
+                    raise lineBreakError(
+                        f"'{vid_name}', {timestamp} : there should be the same number of line than the number of boxes "
+                        f"(here {len(events_list)} lines and {len(boxes_list)} boxes).\n"
+                        "This is most likely due to libass automatic line break when the text is too long"
+                    )
             for i in range(len(events_list)):
                 changed_box = change_box_size(deepcopy(boxes_list[i]), events_list[i].text, PIL.size)
                 

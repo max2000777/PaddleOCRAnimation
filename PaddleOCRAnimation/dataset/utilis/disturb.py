@@ -465,7 +465,7 @@ def style_transform(style: line.Style) -> line.Style:
         "Symbol", "Segoe Fluent Icons", "Wingdings 3"
     }
     style = deepcopy(style)
-    if random.random() < 0.40:
+    if random.random() < 0.60:
         nom_polices = {
             fm.FontProperties(fname=font).get_name(): font
             for font in fm.findSystemFonts(fontpaths=None, fontext='ttf')
@@ -524,6 +524,7 @@ def disturb_text(
             event: line.Dialogue,
             p_three_dots_before: float = 0.1,
             p_three_dots_after:float = 0.35,
+            p_for_dots_after: float = 0.3,
             p_two_dots_after:float = 0.35,
             p_point_after: float = 0.25,
             timestamp: timedelta | None = None
@@ -553,6 +554,10 @@ def disturb_text(
                     text = text+'..'
                     logger.debug(f'Added two dots to text, new text : {text}')
                     event.text = text
+            elif random.random() < p_three_dots_after and not text.endswith(("...", "…", "!", "?", '.', ",")):
+                text = text+'....'
+                event.text = text
+                logger.debug(f'Added four dots to text, new text : {text}')
             elif random.random() < p_point_after and not text.endswith(("...", "…", "!", "?", '.', ",")):
                 text = text+'.'
                 event.text = text
@@ -646,25 +651,23 @@ def disturb_text(
         logger.debug(f'added {code} to {event.text}')
         return event
     
-    def capitalize_a_word(
-            event: line.Dialogue, p: float = 0.3,
-            p_all_word: float = 0.2
-        ) -> line.Dialogue:
-        """capitalize (or upper) a random word of the text (not the first word)"""
-        if random.random() > p:
-            return event
-        
-        all_word = True if random.random() < p_all_word else False
-
+    def capitalize_sentence(
+            event: line.Dialogue, 
+            p_firt_letter: float = 0.7,
+            p_entire_word: float = 0.5,
+            p_all_sentence:float = 0.15,
+        ) -> line.Dialogue:   
         words = event.text.split()
         if len(words) <= 1:
             return event
-        
         idx = random.randrange(1, len(words))
-        if all_word:
-            words[idx] = words[idx].upper()
-        else : 
+
+        if random.random() < p_all_sentence:
+            words = [word.capitalize() for word in words]
+        elif random.random() < p_entire_word:
             words[idx] = words[idx].capitalize()
+        elif random.random() < p_firt_letter:
+            words[idx] = words[idx].upper()
 
         event.text = " ".join(words)
         return event
@@ -688,7 +691,7 @@ def disturb_text(
         event_list[i]= add_one_spe_char_word(
             event
         )
-        event_list[i]= capitalize_a_word(
+        event_list[i]= capitalize_sentence(
             event
         )
         event_list[i] = add_numbers(

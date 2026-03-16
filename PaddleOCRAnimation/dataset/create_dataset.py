@@ -14,11 +14,11 @@ def path_check(
     main_mkv_path: str | Path,
     dataset_path: str | Path | None = None,
     image_save_path: str | Path | None = None,
-    no_text_image_save_path: str | Path | None = None,
     attachement_path: str | Path | None = None,
     extracted_sub_path: str | Path | None = None,
     separate_text_and_no_text_images: bool = True,
-) -> tuple[str, str, str, str, str, str]:
+    train_test_split: float | None = None,
+) -> tuple[str, str, str, str, str, str, str, str]:
     """
     Validates and initializes all necessary directories for dataset generation.
 
@@ -58,7 +58,7 @@ def path_check(
             If `main_mkv_path` exists but is not a directory.
 
     Returns:
-        tuple[str, str, str, str, str, str]:
+        tuple[str, str, str, str, str, str, str,str]:
             A tuple of absolute string paths in the following order:
             `(main_mkv_path, image_save_path, no_text_image_save_path, dataset_path, attachement_path, extracted_sub_path)`.
 
@@ -71,6 +71,8 @@ def path_check(
         raise FileNotFoundError(f"{main_mkv_path.absolute()} does not exist")
     if not main_mkv_path.is_dir():
         raise ValueError(f"{main_mkv_path.absolute()} is not a directory")
+    if train_test_split is not None and (not isinstance(train_test_split, float) or train_test_split <0 or train_test_split >1):
+        raise ValueError("train_test_split should be a float between 0 and 1")
 
     if dataset_path is None:
         dataset_path = Path(os.getcwd()) / "dataset"
@@ -80,22 +82,35 @@ def path_check(
     images_root = Path(image_save_path) if image_save_path else dataset_path / "det_images"
 
     if separate_text_and_no_text_images:
-        image_save_path = images_root / "text"
-        no_text_image_save_path = images_root / "no_text"
+        image_save_path = images_root / "text" if train_test_split is None else images_root / "train" / "text"
+        no_text_image_save_path = images_root / "no_text" if train_test_split is None else images_root / "train" / "no_text"
+        test_image_save_path = images_root / "text" if train_test_split is None else images_root / "test" / "text"
+        test_no_text_image_save_path = images_root / "no_text" if train_test_split is None else images_root / "test" / "no_text"
     else:
-        image_save_path = images_root
-        no_text_image_save_path = images_root
+        image_save_path = images_root if train_test_split is None else images_root / "train"
+        no_text_image_save_path = images_root if train_test_split is None else images_root / "train"
+        test_image_save_path = images_root if train_test_split is None else images_root / "test"
+        test_no_text_image_save_path = images_root if train_test_split is None else images_root / "test"
 
     extracted_sub_path = Path(extracted_sub_path) if extracted_sub_path else dataset_path / "extracted_subs"
     attachement_path = Path(attachement_path) if attachement_path else dataset_path / "attachements"
 
     for path in [dataset_path, images_root, image_save_path, no_text_image_save_path, extracted_sub_path, attachement_path]:
+        if Path(path).exists and not Path(path).is_dir():
+            f'The provided dir path should be a dir : {path}'
         os.makedirs(path, exist_ok=True)
+    if train_test_split is not None: 
+        for path in [test_image_save_path, test_no_text_image_save_path]:
+            if Path(path).exists and not Path(path).is_dir():
+                f'The provided dir path should be a dir : {path}'
+            os.makedirs(path, exist_ok=True)
 
     return (
         str(main_mkv_path),
         str(image_save_path),
         str(no_text_image_save_path),
+        str(test_image_save_path),
+        str(test_no_text_image_save_path),
         str(dataset_path),
         str(attachement_path),
         str(extracted_sub_path),
@@ -106,6 +121,7 @@ def create_ocr_dataset(
         main_mkv_path: str | Path, 
         image_save_path: str | Path | None = None,
         no_text_image_save_path: str | Path | None = None,
+        train_test_split: float | None = None,
         dataset_path: str | Path | None = None,
         save_format: Literal['PaddleOCR'] = 'PaddleOCR',
         extracted_sub_path: str | Path | None = None,
@@ -117,6 +133,7 @@ def create_ocr_dataset(
         padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.005, 0.1, 0.005, 0.1),
         logging_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] = 'INFO',
         ass_log_level: Literal['INFO', 'DEBUG', 'WARNING', 'CRITICAL', 'ERROR'] | None = 'DEBUG',
+        split_text_nontext_datasets_txt: bool = True
     ) -> None:
     """
     Automatically generates a complete OCR training dataset from a collection of MKV videos.
@@ -223,10 +240,10 @@ def create_ocr_dataset(
           internally during frame generation.
         - Metatata are written in `<dataset_path>/dataset_metadata.txt`
     """
-    main_mkv_path, image_save_path, no_text_image_save_path, dataset_path, attachement_path, extracted_sub_path = path_check(
+    main_mkv_path, image_save_path, no_text_image_save_path, test_image_save_path, test_no_text_image_save_path, dataset_path, attachement_path, extracted_sub_path = path_check(
         main_mkv_path=main_mkv_path, 
         image_save_path=image_save_path, 
-        no_text_image_save_path= no_text_image_save_path,
+        train_test_split= train_test_split,
         dataset_path=dataset_path, 
         extracted_sub_path = extracted_sub_path, 
         attachement_path = attachement_path
@@ -259,6 +276,8 @@ def create_ocr_dataset(
             extracted_sub_path=extracted_sub_path,
             preferd_sub_language=preferd_sub_language,
             no_text_image_save_path=no_text_image_save_path,
+            test_image_save_path=test_image_save_path,
+            test_no_text_image_save_path =test_no_text_image_save_path,
             dataset_path=dataset_path,
             root_mkv_path=str(main_mkv_path),
             attachement_path=attachement_path,
@@ -268,6 +287,8 @@ def create_ocr_dataset(
             p_timing=p_timing,
             padding= padding,
             use_transparency= use_transparency,
+            train_test_split=train_test_split,
+            split_text_nontext_datasets_txt=split_text_nontext_datasets_txt
         )
         n_text_image += text
         n_no_text_image += no_text

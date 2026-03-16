@@ -348,6 +348,7 @@ class dataset_image:
     """
     image_path: str
     event_list: list[FrameToBoxEvent]
+    test: bool = False
 
     def to_paddleOCR(
             self, path: str | Path,
@@ -383,7 +384,8 @@ class dataset_image:
             dict_list.append(line_doc)
         
         with open(path, mode='a', encoding='utf-8') as f:
-            f.write(f"{Path(self.image_path).as_posix()}\t{json.dumps(dict_list, ensure_ascii=False)}\n")
+            relative_image_path = Path(self.image_path).resolve().relative_to(Path(path).resolve().parent)
+            f.write(f"{relative_image_path.as_posix()}\t{json.dumps(dict_list, ensure_ascii=False)}\n")
 
 
     def to_text(self, path: str | Path | None = None, 
