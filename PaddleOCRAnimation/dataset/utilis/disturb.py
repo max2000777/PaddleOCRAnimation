@@ -491,7 +491,7 @@ def style_transform(style: line.Style) -> line.Style:
     if random.random() < 0.1:
         style.bold = not style.bold
 
-    if random.random() < 0.15:
+    if random.random() < 0.35:
         style.italic = not style.italic
 
     return style
@@ -522,10 +522,10 @@ def disturb_text(
     """
     def add_three_dots(
             event: line.Dialogue,
-            p_three_dots_before: float = 0.1,
-            p_three_dots_after:float = 0.35,
-            p_for_dots_after: float = 0.3,
-            p_two_dots_after:float = 0.35,
+            p_three_dots_before: float = 0.2,
+            p_three_dots_after:float = 0.40,
+            p_for_dots_after: float = 0,
+            p_two_dots_after:float = 0,
             p_point_after: float = 0.25,
             timestamp: timedelta | None = None
     ) -> line.Dialogue:
@@ -554,7 +554,7 @@ def disturb_text(
                     text = text+'..'
                     logger.debug(f'Added two dots to text, new text : {text}')
                     event.text = text
-            elif random.random() < p_three_dots_after and not text.endswith(("...", "…", "!", "?", '.', ",")):
+            elif random.random() < p_for_dots_after and not text.endswith(("...", "…", "!", "?", '.', ",")):
                 text = text+'....'
                 event.text = text
                 logger.debug(f'Added four dots to text, new text : {text}')
@@ -618,11 +618,11 @@ def disturb_text(
         if random.random()>p:
             return event
         
-        rom_num = random.choices([' I ', ' II ', ' III ', ' IV' , ' V ', ' VI ', ' VIII ', ' XI ', ' XII '], weights=[0.1, 0.20, 0.17, 0.13, 0.10, 0.08, 0.06, 0.1, 0.1], k=1)[0]
-        prio_list = [
-            ' “', '” ', ' W', ' K', ' Y',' F', '_','" ',' "', ' : ', '...',   rom_num
-        ]
-        w= [10, 10, 6, 6, 5, 6, 10, 10, 10, 15, 20, 15]
+        rom_num = random.choices(
+                    [' I ', ' II ', ' III ', ' IV' , ' V ', ' VI ', ' VIII ', ' XI ', ' XII '], 
+            weights=[   10,     20,      17,     13,    10,      8,        6,      1,       1], k=1)[0]
+        prio_list = [' “', '” ', ' W', ' K', ' Y',' F', '_','" ',' "', ' : ', '...', '... ',  rom_num]
+        w=          [  10,   10,    6,    6,    5,   6,  10,  10,  10,    10,    20,     20,       15]
         spe_char= random.choices(prio_list, weights=w,k=1)[0]
         event.text = replace_random_space(s=event.text, replacement=spe_char)
         logger.debug(f'added prio spe char {spe_char} in {event.text}')
@@ -653,21 +653,40 @@ def disturb_text(
     
     def capitalize_sentence(
             event: line.Dialogue, 
-            p_firt_letter: float = 0.7,
-            p_entire_word: float = 0.5,
-            p_all_sentence:float = 0.15,
+            w_no_change: int = 30,
+            w_all_sentence: int = 13,
+            w_firt_letter: int = 20,
+            w_entire_word: int = 13,
+            w_random_letters: int = 5,
+            
         ) -> line.Dialogue:   
+        def uppercase_random_letters(word: str, p: float = 0.33) -> str:
+            chars = list(word)
+            for i, c in enumerate(chars):
+                if c.isalpha() and random.random() < p:
+                    chars[i] = c.upper()
+            return ''.join(chars)
         words = event.text.split()
         if len(words) <= 1:
             return event
         idx = random.randrange(1, len(words))
 
-        if random.random() < p_all_sentence:
-            words = [word.capitalize() for word in words]
-        elif random.random() < p_entire_word:
+        change = random.choices(
+            population=['no_change', 'all_sentence', 'firt_letter', 'entire_word', 'random_letters'],
+            weights=   [w_no_change, w_all_sentence, w_firt_letter, w_entire_word, w_random_letters], k=1
+        )[0]
+
+        if change == 'no_change':
+            return event
+        elif change == 'all_sentence':
+            words = [word.upper() for word in words]
+        elif change == 'firt_letter':
             words[idx] = words[idx].capitalize()
-        elif random.random() < p_firt_letter:
+        elif change == 'entire_word':
             words[idx] = words[idx].upper()
+        elif change == 'random_letters':
+            for i, word in enumerate(words):
+                words[i] = uppercase_random_letters(word)
 
         event.text = " ".join(words)
         return event

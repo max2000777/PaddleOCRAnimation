@@ -545,7 +545,7 @@ class detDataset(paddleDataset):
                     print(f'error for {basename(image["image_path"])}: {e}')
                     continue
                 else:
-                    rec_text =f"{Path(temp_image_path).resolve().relative_to(Path(temp_txtname).resolve().parent)}\t{text}\n"
+                    rec_text =f"{Path(temp_image_path).resolve().relative_to(Path(temp_txtname).resolve().parent).as_posix()}\t{text}\n"
                 
                 with open(join(dirname(self.path), temp_txtname), 'a', encoding="utf-8") as f:
                     f.write(rec_text)

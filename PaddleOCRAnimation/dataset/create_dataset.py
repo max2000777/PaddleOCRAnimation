@@ -13,65 +13,78 @@ logger = logging.getLogger(__name__)
 def path_check(
     main_mkv_path: str | Path,
     dataset_path: str | Path | None = None,
-    image_save_path: str | Path | None = None,
+    image_root_dir: str | Path | None = None,
     attachement_path: str | Path | None = None,
     extracted_sub_path: str | Path | None = None,
     separate_text_and_no_text_images: bool = True,
     train_test_split: float | None = None,
 ) -> tuple[str, str, str, str, str, str, str, str]:
     """
-    Validates and initializes all necessary directories for dataset generation.
+    Validate the input root directory and prepare all dataset subdirectories.
 
-    This function checks that the root MKV directory exists and then prepares
-    a standardized folder structure for dataset creation. It ensures that paths
-    for images, subtitles, and attachments are properly defined and created.
+    This helper normalizes paths, creates missing folders, and returns the full set
+    of directories used later by the dataset generation pipeline.
 
-    If some paths are not explicitly provided, they are automatically generated
-    relative to a default `dataset/` directory in the current working directory.
+    Directory layout depends on `separate_text_and_no_text_images` and
+    `train_test_split`:
+
+    If `separate_text_and_no_text_images=True` and `train_test_split is None`:
+    - text images     -> `<image_root_dir>/text`
+    - no-text images  -> `<image_root_dir>/no_text`
+
+    If `separate_text_and_no_text_images=True` and `train_test_split is not None`:
+    - train text      -> `<image_root_dir>/train/text`
+    - train no-text   -> `<image_root_dir>/train/no_text`
+    - test text       -> `<image_root_dir>/test/text`
+    - test no-text    -> `<image_root_dir>/test/no_text`
+
+    If `separate_text_and_no_text_images=False` and `train_test_split is None`:
+    - all images      -> `<image_root_dir>`
+
+    If `separate_text_and_no_text_images=False` and `train_test_split is not None`:
+    - train images    -> `<image_root_dir>/train`
+    - test images     -> `<image_root_dir>/test`
+
+    When not provided:
+    - `dataset_path` defaults to `./dataset`
+    - `image_root_dir` defaults to `<dataset_path>/det_images`
+    - `attachement_path` defaults to `<dataset_path>/attachements`
+    - `extracted_sub_path` defaults to `<dataset_path>/extracted_subs`
 
     Args:
-        main_mkv_path (str | Path):
-            Path to the root directory containing MKV videos (and possibly subdirectories).
-        dataset_path (str | Path | None, optional):
-            Root directory for the dataset. Defaults to `./dataset` if not specified.
-        image_save_path (str | Path | None, optional):
-            Directory where generated images (with or without subtitles) will be stored.
-            Defaults to `<dataset_path>/det_images`.
-        no_text_image_save_path (str | Path | None, optional):
-            Directory for images without subtitles (background-only).
-            Automatically derived from `image_save_path` if not specified.
-        attachement_path (str | Path | None, optional):
-            Directory where extracted video attachments (e.g., fonts) will be stored.
-            Defaults to `<dataset_path>/attachements`.
-        extracted_sub_path (str | Path | None, optional):
-            Directory where extracted subtitle files will be stored.
-            Defaults to `<dataset_path>/extracted_subs`.
-        separate_text_and_no_text_images (bool, optional):
-            If True, creates separate folders for `text/` and `no_text/` images
-            inside the images root directory. If False, both are saved in the same folder.
-            Defaults to True.
-
-    Raises:
-        FileNotFoundError:
-            If `main_mkv_path` does not exist.
-        ValueError:
-            If `main_mkv_path` exists but is not a directory.
+        main_mkv_path:
+            Root directory containing MKV files.
+        dataset_path:
+            Root output directory for the dataset.
+        image_root_dir:
+            Root directory under which image folders are created.
+        attachement_path:
+            Directory where extracted MKV attachments are stored.
+        extracted_sub_path:
+            Directory where extracted subtitle files are stored.
+        separate_text_and_no_text_images:
+            Whether to use separate directories for text and no-text images.
+        train_test_split:
+            If not None, enables train/test directory separation. Must be a float
+            strictly between 0 and 1.
 
     Returns:
-        tuple[str, str, str, str, str, str, str,str]:
-            A tuple of absolute string paths in the following order:
-            `(main_mkv_path, image_save_path, no_text_image_save_path, dataset_path, attachement_path, extracted_sub_path)`.
+        tuple:
+            Paths returned in this order:
+            `(main_mkv_path, image_save_path, no_text_image_save_path,
+            test_image_save_path, test_no_text_image_save_path, dataset_path,
+            attachement_path, extracted_sub_path)`
 
-    Side Effects:
-        - Creates all necessary directories if they do not already exist.
-        - Standardizes and returns all paths as strings.
+    Notes:
+        If `train_test_split is None`, the returned `test_*` paths are not meant to
+        be used later, even though values are still returned for consistency.
     """
     main_mkv_path = Path(main_mkv_path)
     if not main_mkv_path.exists():
         raise FileNotFoundError(f"{main_mkv_path.absolute()} does not exist")
     if not main_mkv_path.is_dir():
         raise ValueError(f"{main_mkv_path.absolute()} is not a directory")
-    if train_test_split is not None and (not isinstance(train_test_split, float) or train_test_split <0 or train_test_split >1):
+    if train_test_split is not None and (not isinstance(train_test_split, float) or train_test_split <=0 or train_test_split >=1):
         raise ValueError("train_test_split should be a float between 0 and 1")
 
     if dataset_path is None:
@@ -79,7 +92,7 @@ def path_check(
     else:
         dataset_path = Path(dataset_path)
 
-    images_root = Path(image_save_path) if image_save_path else dataset_path / "det_images"
+    images_root = Path(image_root_dir) if image_root_dir else dataset_path / "det_images"
 
     if separate_text_and_no_text_images:
         image_save_path = images_root / "text" if train_test_split is None else images_root / "train" / "text"
@@ -96,14 +109,14 @@ def path_check(
     attachement_path = Path(attachement_path) if attachement_path else dataset_path / "attachements"
 
     for path in [dataset_path, images_root, image_save_path, no_text_image_save_path, extracted_sub_path, attachement_path]:
-        if Path(path).exists and not Path(path).is_dir():
-            f'The provided dir path should be a dir : {path}'
-        os.makedirs(path, exist_ok=True)
+        if Path(path).exists() and not Path(path).is_dir():
+            raise ValueError(f'The provided dir path should be a dir : {path}')
+        Path(path).mkdir(parents=True, exist_ok=True)
     if train_test_split is not None: 
         for path in [test_image_save_path, test_no_text_image_save_path]:
-            if Path(path).exists and not Path(path).is_dir():
-                f'The provided dir path should be a dir : {path}'
-            os.makedirs(path, exist_ok=True)
+            if Path(path).exists() and not Path(path).is_dir():
+                raise ValueError(f'The provided dir path should be a dir : {path}')
+            Path(path).mkdir(parents=True, exist_ok=True)
 
     return (
         str(main_mkv_path),
@@ -119,8 +132,7 @@ def path_check(
 
 def create_ocr_dataset(
         main_mkv_path: str | Path, 
-        image_save_path: str | Path | None = None,
-        no_text_image_save_path: str | Path | None = None,
+        image_root_dir: str | Path | None = None,
         train_test_split: float | None = None,
         dataset_path: str | Path | None = None,
         save_format: Literal['PaddleOCR'] = 'PaddleOCR',
@@ -242,7 +254,7 @@ def create_ocr_dataset(
     """
     main_mkv_path, image_save_path, no_text_image_save_path, test_image_save_path, test_no_text_image_save_path, dataset_path, attachement_path, extracted_sub_path = path_check(
         main_mkv_path=main_mkv_path, 
-        image_save_path=image_save_path, 
+        image_root_dir=image_root_dir, 
         train_test_split= train_test_split,
         dataset_path=dataset_path, 
         extracted_sub_path = extracted_sub_path, 
@@ -270,7 +282,7 @@ def create_ocr_dataset(
 
     n_text_image, n_no_text_image, skipped = 0, 0, 0
     for mkv in tqdm(mkv_files):
-        logger.debug(f'starting, {mkv}')
+        logger.debug(f'starting {mkv}')
         text, no_text = video_to_dataset(
             video_path=mkv,
             extracted_sub_path=extracted_sub_path,
