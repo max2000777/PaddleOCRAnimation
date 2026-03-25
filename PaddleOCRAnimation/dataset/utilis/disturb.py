@@ -100,20 +100,20 @@ def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
 @overload
 def crop_image(
     image: Image.Image, event_list: eventWithPilList,
-    height_cut_ratio: float = 0.65, width_cut_ratio: float = 0.01,
+    height_cut_ratio: float = 0.72, width_cut_ratio: float = 0.01,
     reverse:bool = False
     ) -> tuple[Image.Image, eventWithPilList]:
     ...
 @overload
 def crop_image(
     image: Image.Image, event_list: None = None,
-    height_cut_ratio: float = 0.65, width_cut_ratio: float = 0.01,
+    height_cut_ratio: float = 0.72, width_cut_ratio: float = 0.01,
     reverse:bool = False
 ) -> Image.Image:
     ...
 def crop_image(
         image: Image.Image, event_list: eventWithPilList | None = None,
-        height_cut_ratio: float = 0.65, width_cut_ratio: float = 0.01,
+        height_cut_ratio: float = 0.72, width_cut_ratio: float = 0.015,
         reverse:bool = False
     ):
     """
@@ -138,15 +138,33 @@ def crop_image(
             The cropped image, and the updated event list if provided.
     """
     im_w, im_h = image.size
-    cut_top = abs(int(random.gauss(height_cut_ratio, 0.05)* im_h))
+    min_h, min_w, max_h, max_w = im_h, im_w, 0, 0
+    if event_list is not None:
+        for event_bloc in event_list:
+            for event in event_bloc.events:
+                box = event.Boxes.full_box
+                xs = [p[0] for p in box]
+                ys = [p[1] for p in box]
+                e_min_w, e_max_w = min(xs), max(xs)
+                e_min_h, e_max_h = min(ys), max(ys)
+                
+                if reverse and (e_min_h > im_h//2 or e_max_h > im_h//2):
+                    # The sub is in the bottom part of the image (or right in the middle), we only care about the top part
+                    continue
+                elif not reverse and (e_min_h < im_h//2 or e_max_h < im_h//2):
+                    continue
+                min_h, min_w, max_h, max_w = min(e_min_h, min_h), min(e_min_w, min_w), max(max_h, e_max_h), max(max_w, e_max_w)
+
+    cut_top = abs(int(random.gauss(height_cut_ratio, 0.08)* im_h))
     cut_sides = abs(int(random.gauss(width_cut_ratio , 0.035)* im_w))
     cut_bottom = 0
 
     if reverse :
         # we want the top the the image
         cut_bottom, cut_top = cut_top, cut_bottom
-
-    im = image.crop((cut_sides, cut_top, im_w-cut_sides, im_h-cut_bottom))
+    
+    cut_left, cut_top, cut_right, cut_bottom = min(min_w, cut_sides), min(min_h, cut_top), max(im_w-cut_sides, max_w), max(max_h, im_h-cut_bottom)
+    im = image.crop((cut_left, cut_top, cut_right, cut_bottom))
 
     if event_list is not None: 
         event_list.add_padding((-cut_sides, -cut_top, -cut_sides, -cut_bottom))
