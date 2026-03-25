@@ -2,7 +2,7 @@ import subprocess
 from os.path import exists, dirname, abspath, join, relpath
 from os import makedirs
 import importlib.resources
-from PIL import Image
+from PIL import Image, ImageDraw
 from pathlib import Path
 import logging
 import json
@@ -180,13 +180,52 @@ def xml_index_to_json_index(path_to_folder: Path | str, rounding: int = 3) -> di
 
     return {"subtitles": subtitles}
 
+def simulate_CreateDoubleBorder(
+        img: Image.Image, borderSize: int = 10, p_change_color:float = 0.3
+    ) -> Image.Image:
+    """Try to replicate the default prepocess : https://github.com/SubtitleEdit/subtitleedit/blob/669eb2ca0ebc1950707fff3dcac600f97d7b5602/src/UI/Features/Ocr/Engines/PaddleOcr.cs#L388
+    """
+    img = img.convert("RGBA")
+
+    w, h = img.size
+    totalBorder = borderSize * 2
+    finalWidth = w + totalBorder * 2
+    finalHeight = h + totalBorder * 2
+
+    result = Image.new("RGBA", (finalWidth, finalHeight), (0, 0, 0, 0))
+
+    draw = ImageDraw.Draw(result)
+
+    left = borderSize
+    top = borderSize
+    right = finalWidth - borderSize
+    bottom = finalHeight - borderSize
+
+    rect_color = (0, 0, 0, 255)
+
+    if random.random() < p_change_color:
+        rect_color = rect_color = (
+            random.randint(0, 255),
+            random.randint(0, 255),
+            random.randint(0, 255),
+            255,
+        )
+
+    draw.rectangle([left, top, right, bottom], fill=rect_color)
+
+    result.paste(img, (totalBorder, totalBorder), img)
+
+    return result
+
+
 
 
 def vobsubpng_to_eventWithPilList(
         path_to_vobsubpng_folder: str | Path,
         path_to_sub: str | Path, 
         multiline: bool = True,
-        padding: tuple[int,int,int,int] = (7,2,3,1)
+        padding: tuple[int,int,int,int] = (7,2,3,1),
+        p_CreateDoubleBorder: float = 0.4,
 )->eventWithPilList:
     """
     Build an image/text dataset by pairing VobSub PNG subtitles with timed subtitle events
@@ -323,7 +362,7 @@ def vobsubpng_to_eventWithPilList(
             corresponding_event = split_dialogue(corresponding_event)
         if len(corresponding_event) != len(boxes):
             raise ValueError(f'The number of lines detected for the sub {i} ({len(boxes)} lines) is not the same as the number of lines in the text ({len(corresponding_event)} lines)')
-        event_list = []
+        event_list: list[FrameToBoxEvent] = []
         for j, bbox in enumerate(boxes):
             d_padding = dynamic_padding(
                 corresponding_event[j].text, padding=padding, 
@@ -332,6 +371,12 @@ def vobsubpng_to_eventWithPilList(
             b = padded_box_from_xyxy(bbox, sub_image.size, d_padding)
             baseline_b = adjust_box_to_baseline(sub_image, box=b) if multiline == False else None
             event_list.append(FrameToBoxEvent(Event=corresponding_event[j], Boxes=b, baseline_Boxes=baseline_b))
+        
+        if random.random() < p_CreateDoubleBorder:
+            border_size = 10
+            sub_image = simulate_CreateDoubleBorder(sub_image, borderSize=border_size)
+            for sub in event_list:
+                sub.Boxes.add_padding((border_size*2, border_size*2, border_size*2, border_size*2))
         event_with_pil_list.append(eventWithPil(image=sub_image, events=event_list))
             
     return eventWithPilList(event_with_pil_list)

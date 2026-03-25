@@ -59,6 +59,39 @@ def get_annotation_txt_paths(
         test_no_text_image_save_path: str | Path,
         split_text_nontext_datasets_txt: bool = True,
     )-> tuple[str, str, str, str]:
+    """
+    Build the annotation text file paths used to write dataset entries.
+
+    The annotation files are always placed one directory above the corresponding
+    image folders, which matches the folder layout commonly used with PaddleOCR
+    and works well with PPOCRLabel.
+
+    Depending on `train_test_split` and `split_text_nontext_datasets_txt`, the
+    returned paths may point to four distinct files or to shared files when
+    train/test or text/no-text separation is disabled.
+
+    Args:
+        train_test_split (float | None):
+            If not None, separate annotation files are created for train and test.
+        image_save_path (str | Path):
+            Directory used for train images containing text.
+        no_text_image_save_path (str | Path):
+            Directory used for train images without text.
+        test_image_save_path (str | Path):
+            Directory used for test images containing text.
+        test_no_text_image_save_path (str | Path):
+            Directory used for test images without text.
+        split_text_nontext_datasets_txt (bool, optional):
+            If True, use separate annotation files for text and no-text images.
+            Otherwise, both categories share the same train/test annotation file.
+            Defaults to True.
+
+    Returns:
+        tuple:
+            Annotation file paths in this order:
+            (txt_dataset_train_text, txt_dataset_test_text,
+            txt_dataset_train_notext, txt_dataset_test_notext).
+"""
     if train_test_split is not None and split_text_nontext_datasets_txt:
         txt_dataset_train_text = Path(image_save_path).parent / 'detImages_train_text.txt'
         txt_dataset_test_text = Path(test_image_save_path).parent / 'detImages_test_text.txt'
@@ -82,24 +115,44 @@ def get_annotation_txt_paths(
     
     return str(txt_dataset_train_text), str(txt_dataset_test_text), str(txt_dataset_train_notext), str(txt_dataset_test_notext)
 
-def choose_anotation_path(
+def choose_annotation_path(
         image:dataset_image, txt_dataset_train_text: str | Path, 
         txt_dataset_test_text: str | Path, txt_dataset_train_notext: str | Path, 
-        txt_dataset_test_notext: str,
+        txt_dataset_test_notext: str | Path,
 ) -> str:
-    n_boxes = 0
-    for event in image.event_list:
-            if event.Boxes.full_box != [[0, 0], [0, 0], [0, 0], [0, 0]]:
-                n_boxes +=1
-    no_text = n_boxes == 0
-    if image.test and no_text:
-        return str(txt_dataset_test_notext)
-    elif image.test and not no_text:
-        return str(txt_dataset_test_text)
-    elif not image.test and no_text:
-        return str(txt_dataset_train_notext)
-    else: 
-        return str(txt_dataset_train_text)
+    """
+    Select the annotation file path for a generated image.
+
+    The returned path depends on two properties of `image`:
+    - whether it belongs to the test split (`image.test`)
+    - whether it contains at least one valid text box
+
+    An image is considered to contain text if at least one event has a
+    non-empty bounding box.
+
+    Args:
+        image (dataset_image):
+            Generated dataset image to classify as train/test and text/no-text.
+        txt_dataset_train_text (str | Path):
+            Annotation file used for train images containing text.
+        txt_dataset_test_text (str | Path):
+            Annotation file used for test images containing text.
+        txt_dataset_train_notext (str | Path):
+            Annotation file used for train images without text.
+        txt_dataset_test_notext (str | Path):
+            Annotation file used for test images without text.
+
+    Returns:
+        str:
+            Path to the annotation file where this image entry should be written.
+    """
+    has_text = any(
+        event.Boxes.full_box != [[0, 0], [0, 0], [0, 0], [0, 0]]
+        for event in image.event_list
+    )
+    if image.test:
+        return str(txt_dataset_test_text if has_text else txt_dataset_test_notext)
+    return str(txt_dataset_train_text if has_text else txt_dataset_train_notext)
     
 
 def dataset_metadata_before(
@@ -418,7 +471,7 @@ def video_to_dataset(
       4. Rendering screenshots at each timing — with and without subtitles — using `cv2` for
          background frames and `libass` for subtitle rendering.
       5. For each generated image, the subtitle text and bounding boxes are saved as dataset
-         entries in `dataset.txt`, following the `PaddleOCR` text recognition format.
+         entries, following the `PaddleOCR` text recognition format.
 
     This is typically used to generate OCR training data where subtitles serve as labeled text
     over video frames.
@@ -517,12 +570,11 @@ def video_to_dataset(
         p=p_timing
     )
 
-    txt_dataset_train_text, txt_dataset_test_text, txt_dataset_train_notext, txt_dataset_test_notext =get_annotation_txt_paths(
+    txt_dataset_train_text, txt_dataset_test_text, txt_dataset_train_notext, txt_dataset_test_notext = get_annotation_txt_paths(
         train_test_split=train_test_split, image_save_path=image_save_path,
         no_text_image_save_path=no_text_image_save_path, test_image_save_path=test_image_save_path,
         test_no_text_image_save_path=test_no_text_image_save_path, split_text_nontext_datasets_txt=split_text_nontext_datasets_txt
     )
-    dataset_file = os.path.join(dataset_path, 'dataset.txt')
 
     executor = ThreadPoolExecutor(max_workers=50)
 
@@ -551,7 +603,7 @@ def video_to_dataset(
         try:
             timing_results= t.result()
             for image in timing_results:
-                dataset_file = choose_anotation_path(
+                dataset_file = choose_annotation_path(
                     image=image, txt_dataset_train_text=txt_dataset_train_text, 
                     txt_dataset_test_text=txt_dataset_test_text, txt_dataset_train_notext=txt_dataset_train_notext, 
                     txt_dataset_test_notext=txt_dataset_test_notext
