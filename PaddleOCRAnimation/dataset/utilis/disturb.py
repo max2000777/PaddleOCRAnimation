@@ -792,14 +792,49 @@ def disturb_text(
         return event
 
 
-    
-    def keep_one_word(event: line.Dialogue, p: float = 0.1) -> line.Dialogue:
+    def keep_one_word(
+            event: line.Dialogue, p: float = 0.15,
+            p_capitalize: float = 0.20, p_upper: float = 0.05,
+        ) -> line.Dialogue:
         """replace the event text by one word
         """
-        if random.random() < p:
+        if random.random() > p:
+            return event
+        
+        modification = random.choices(population=['keep_one_existing', 'keep_one_new'], weights=[40,60])[0]
+        if modification == 'keep_one_existing':
             text = re.sub(r'\{.*?\}', '', event.text)
             word_list = text.replace("\n", " ").split(" ")
             word = random.choice(word_list)
+            event.text = word
+        elif modification == 'keep_one_new':
+            COMMON_SHORT_SUB_WORDS = [
+                "oui", "non", "euh", "ouais", "hein", "hum", "ah", "oh",
+                "bon", "bah", "ben", "ok", "quoi", "si", "merci", "pardon",
+                "salut", "attends", "allez", "stop", "vite", "tiens",
+                "regarde", "écoute", "désolé", "jamais", "toujours", "pourquoi",
+                "comment", "personne", "bonjour", "bonsoir", "d'accord", "vas-y",
+                "super", "merde", "putain", "sérieux", "possible", "peut-être"
+            ]
+            COMMON_SHORT_SUB_WEIGHTS = [
+                22, 22, 20, 17, 14, 12, 11, 10,
+                11, 10, 10, 10, 11, 8, 9, 8,
+                6, 12, 11, 6, 5, 5,
+                6, 6, 5, 4, 4, 5,
+                4, 4, 4, 3, 10, 8,
+                4, 4, 4, 4, 3, 3
+            ]
+            word = random.choices(
+                COMMON_SHORT_SUB_WORDS,
+                weights=COMMON_SHORT_SUB_WEIGHTS,
+                k=1
+            )[0]
+            r = random.random()
+            if r < p_upper:
+                word = word.upper()
+            elif r < p_upper + p_capitalize:
+                word = word.capitalize()
+
             event.text = word
         return event
 
