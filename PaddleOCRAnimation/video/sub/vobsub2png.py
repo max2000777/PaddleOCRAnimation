@@ -17,6 +17,7 @@ from ..utilis import detect_text_line_xyxy, adjust_box_to_baseline
 from fractions import Fraction
 import xml.etree.ElementTree as ET
 import random
+import warnings
 
 
 
@@ -51,7 +52,11 @@ def vobsub2png(idx_path: str, outputdir: str | None = None):
         raise RuntimeError(
             f"La plateforme {plateforme} n'est pas supportée"
         )
-
+    if not exists(binary_path):
+        raise FileNotFoundError(
+            f"Le fichier binaire {binary_path} n'existe pas"
+        )
+    
     if not exists(idx_path):
         raise FileNotFoundError(
             f"Le fichier {idx_path} n'existe pas"
@@ -218,6 +223,26 @@ def simulate_CreateDoubleBorder(
     return result
 
 
+def crop_png_image(img: Image.Image) -> Image.Image:
+    alpha = img.convert("RGBA").getchannel('A')
+    bbox = alpha.getbbox()
+
+    if not bbox:
+        raise ValueError('The image is fully transparent')
+    
+    margin = random.choices([ 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                            [10, 3, 4, 5, 4, 3, 2, 1, 1])[0]
+    left, upper, right, lower = bbox
+
+    left = max(0, left - margin)
+    upper = max(0, upper - margin)
+    right = min(img.width, right + margin)
+    lower = min(img.height, lower + margin)
+
+    cropped = img.crop((left, upper, right, lower))
+
+    return cropped
+    
 
 
 def vobsubpng_to_eventWithPilList(
@@ -331,7 +356,9 @@ def vobsubpng_to_eventWithPilList(
             continue
 
         sub_image = Image.open(sub_image_path)
-        if sub['size'][0] != sub_image.size[0] or sub['size'][1] != sub_image.size[1]:
+        if random.random() < p_crop_png:
+            sub_image = crop_png_image(sub_image)
+        elif sub['size'][0] != sub_image.size[0] or sub['size'][1] != sub_image.size[1]:
             logger.warning(f"The size of the sub n{i} in the index ({sub['size']}) is not the same as the real size ({sub_image.size})")
         
         # Here we need to find the event corresponding to the image
@@ -361,7 +388,11 @@ def vobsubpng_to_eventWithPilList(
         else:
             corresponding_event = split_dialogue(corresponding_event)
         if len(corresponding_event) != len(boxes):
-            raise ValueError(f'The number of lines detected for the sub {i} ({len(boxes)} lines) is not the same as the number of lines in the text ({len(corresponding_event)} lines)')
+            warnings.warn(
+                f'{path_to_sub}: The number of lines detected for the sub {i} ({len(boxes)} lines) is not the same as the number of lines in the text ({len(corresponding_event)} lines).\ntext:{event.text}'
+                'Probably because the two lines are connected on the PNG'
+            )
+            continue
         event_list: list[FrameToBoxEvent] = []
         for j, bbox in enumerate(boxes):
             d_padding = dynamic_padding(
