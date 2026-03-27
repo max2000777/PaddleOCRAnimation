@@ -395,6 +395,7 @@ def vobsubpng_to_dataset(
         multiline: bool = True,
         padding: tuple[int,int,int,int] | float = (1, 1, 1, 1),
         format: Literal['PaddleOCR'] = 'PaddleOCR',
+        weight: int = 1,
         
 ) -> None:
     """
@@ -429,6 +430,8 @@ def vobsubpng_to_dataset(
             Padding (left, top, right, bottom) to apply around detected bounding boxes.
         format (Literal['PaddleOCR'], optional): 
             Output format for the dataset annotations. Currently supports 'PaddleOCR' only.
+        weight (int, optional): 
+            The number of times a image should appear in the dataset. Defaults to `1`.
 
     Raises:
         FileNotFoundError: If any of the required paths or files are missing.
@@ -482,7 +485,8 @@ def vobsubpng_to_dataset(
         dataset_txt = join(str(root_dataset_path), 'dataset.txt') if train_test_split is None else join(str(root_dataset_path),'train', 'detImages_train_text.txt')
     if test_dataset_txt is None:
         test_dataset_txt = join(str(root_dataset_path),'test', 'detImages_test_text.txt')
-    
+    if not isinstance(weight, int) or weight < 1:
+        raise ValueError('weight should be a positive int')
 
     
     
@@ -499,18 +503,20 @@ def vobsubpng_to_dataset(
 
         temp_dataset_txt = test_dataset_txt if is_test else dataset_txt
         temp_image_save_path = test_image_save_path if is_test else image_save_path
-        image_name = f'{sub_name}_sVOB_t{event.events[0].Event.start.total_seconds()}.png'
-        event.image.save(join(str(temp_image_save_path), image_name))
+        for i in range(1, weight+1):
+            image_num = f'_{i}' if weight > 1 else ''
+            image_name = f'{sub_name}_sVOB_t{event.events[0].Event.start.total_seconds()}{image_num}.png'
+            event.image.save(join(str(temp_image_save_path), image_name))
 
-        event_dataset_image = dataset_image(
-            image_path=join(temp_image_save_path, image_name),
-            event_list=event.events
-        )
+            event_dataset_image = dataset_image(
+                image_path=join(temp_image_save_path, image_name),
+                event_list=event.events
+            )
 
-        event_dataset_image.to_text(
-            path=temp_dataset_txt,
-            format=format
-        )
+            event_dataset_image.to_text(
+                path=temp_dataset_txt,
+                format=format
+            )
     
     write_metadata(
         dataset_path=str(root_dataset_path),
