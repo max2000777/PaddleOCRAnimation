@@ -114,28 +114,43 @@ def crop_image(
 def crop_image(
         image: Image.Image, event_list: eventWithPilList | None = None,
         height_cut_ratio: float = 0.72, width_cut_ratio: float = 0.015,
-        reverse:bool = False
+        reverse:bool = False, p_cut_h: float = 0.9, p_cut_w: float = 0.8,
     ):
     """
-    Randomly crops an image to simulate partial frame cuts that occur during OCR processing.
-    The crop mainly removes content from the top of the image (since subtitles are usually at the bottom).
-    If an event list with bounding boxes is provided, their coordinates are adjusted accordingly,
-    and boxes falling outside the cropped area are removed.
+    Randomly crops an image to simulate the frame cropping performed during OCR preprocessing.
+
+    By default, the crop removes a large part of the top of the image in order to keep the
+    lower area where subtitles usually appear. If `reverse=True`, the behavior is inverted and
+    the crop keeps the upper part instead.
+
+    When an `event_list` is provided, subtitle bounding boxes are inspected to compute a valid
+    crop limit: the crop is reduced if needed so that relevant subtitle boxes remain inside the
+    final image. Boxes located in the opposite half of the image are ignored when determining
+    this limit.
 
     Args:
-        image (Image.Image): Input image to crop.
-        event_list (eventWithPilList | None, optional): 
-            List of bounding boxes or events to adjust after cropping. Defaults to `None`.
-        height_cut_ratio (float, optional): 
-            Average proportion of image height to crop from the top. Defaults to `0.65`.
-        width_cut_ratio (float, optional): 
-            Average proportion of image width to crop from each side. Defaults to `0.01`.
+        image (Image.Image):
+            Input image to crop.
+        event_list (eventWithPilList | None, optional):
+            Subtitle events with bounding boxes. When provided, their coordinates are shifted to
+            match the cropped image, and they are also used to prevent cropping through relevant
+            subtitle regions. Defaults to `None`.
+        height_cut_ratio (float, optional):
+            Mean proportion of image height removed vertically. Defaults to `0.72`.
+        width_cut_ratio (float, optional):
+            Mean proportion of image width removed on both horizontal sides. Defaults to `0.015`.
         reverse (bool, optional):
-            If `true`, everithing is reversed meaning we get the top part of the image instead of the bottom part. Defaults to `False`.
+            If `False`, keeps the bottom part of the image. If `True`, keeps the top part.
+            Defaults to `False`.
+        p_cut_h (float, optional):
+            Probability of applying a vertical crop. Defaults to `0.9`.
+        p_cut_w (float, optional):
+            Probability of applying a horizontal crop. Defaults to `0.8`.
 
     Returns:
-        Image.Image | tuple[Image.Image, eventWithPilList]: 
-            The cropped image, and the updated event list if provided.
+        Image.Image | tuple[Image.Image, eventWithPilList]:
+            The cropped image. If `event_list` is provided, returns the cropped image together
+            with the updated event list.
     """
     im_w, im_h = image.size
     min_h, min_w, max_h, max_w = im_h, im_w, 0, 0
@@ -155,8 +170,8 @@ def crop_image(
                     continue
                 min_h, min_w, max_h, max_w = min(e_min_h, min_h), min(e_min_w, min_w), max(max_h, e_max_h), max(max_w, e_max_w)
 
-    cut_top = abs(int(random.gauss(height_cut_ratio, 0.08)* im_h))
-    cut_sides = abs(int(random.gauss(width_cut_ratio , 0.035)* im_w))
+    cut_top = abs(int(random.gauss(height_cut_ratio, 0.08)* im_h)) if random.random() < p_cut_h else 0
+    cut_sides = abs(int(random.gauss(width_cut_ratio , 0.035)* im_w)) if random.random() < p_cut_w else 0
     cut_bottom = 0
 
     if reverse :
@@ -167,7 +182,7 @@ def crop_image(
     im = image.crop((cut_left, cut_top, cut_right, cut_bottom))
 
     if event_list is not None: 
-        event_list.add_padding((-cut_sides, -cut_top, -cut_sides, -cut_bottom))
+        event_list.add_padding((-cut_left, -cut_top, -(im_w-cut_right), -(im_h-cut_bottom)))
         
         return im, event_list
     
@@ -238,39 +253,36 @@ def add_noise(img, mean: float =0, std: float =10):
 def pixelate_image(
         img:Image.Image,
         event_list:eventWithPilList,
-        mean_ratio: float = 0.7,
-        sigma_ratio: float = 0.15
+        factor: float = 0.7,
     ) -> tuple[Image.Image, eventWithPilList]:
     ...
 @overload
 def pixelate_image(
         img:Image.Image,
         event_list: None = None,
-        mean_ratio: float = 0.7,
-        sigma_ratio: float = 0.15
+        factor: float = 0.7,
     ) -> Image.Image:
     ...
 def pixelate_image(
         img:Image.Image,
         event_list:eventWithPilList | None = None,
-        mean_ratio: float = 0.7,
-        sigma_ratio: float = 0.1,
+        factor: float = 0.7,
     ) -> Image.Image | tuple[Image.Image, eventWithPilList]:
-    """Applies a pixelation effect to an image (and optionally its subtitle overlays).
+    """Applies a pixelation effect to an image and optional event overlays.
 
     Args:
-        img (Image.Image): Base image (with subtitles already rendered).
-        event_list (eventWithPilList | None, optional): 
-            List of subtitle overlay events, each with its own transparent image. 
-            If provided, each overlay is pixelated with the same factor as the base image.
-        mean_ratio (float, optional): Mean scaling ratio for downsampling. 
-            Lower values increase pixelation. Defaults to 0.7.
-        sigma_ratio (float, optional): Standard deviation of the random scaling ratio 
-            (adds randomness to pixelation strength). Defaults to 0.15.
+        img (Image.Image): Input image to pixelate.
+        event_list (eventWithPilList | None, optional):
+            Optional event list whose images are pixelated with the same factor.
+            Defaults to None.
+        factor (float, optional):
+            Downscaling factor used before upscaling back to the original size.
+            Lower values produce stronger pixelation. Clamped to the [0.05, 0.9] range.
+            Defaults to 0.7.
 
     Returns:
-        Image.Image | tuple[Image.Image, eventWithPilList]: 
-            The pixelated image, and optionally the updated event list.
+        Image.Image | tuple[Image.Image, eventWithPilList]:
+            The pixelated image, and the updated event list if provided.
     """
 
     def downsize_upsize(img: Image.Image, factor: float)->Image.Image:
@@ -286,7 +298,6 @@ def pixelate_image(
         return pixelated
     width, height = img.size
 
-    factor = random.gauss(mu=mean_ratio, sigma=sigma_ratio)
     factor = max(0.05, min(0.9, factor))
 
 
@@ -303,6 +314,7 @@ def pixelate_image(
 def jpeg_compress(img: Image.Image, quality:int =10):
     """Sauvegarde sur RAM en JPEG (avec compression) et réouvre cette sauvegarde
     """
+    quality = min(max(1, quality), 95)
     baseMode = img.mode
     if baseMode == 'RGBA':
         img = img.convert('RGB')
@@ -329,31 +341,38 @@ def salt_and_pepper(img, amount=0.003):
     return img.convert('RGBA') if img.mode == 'RGBA' else img
 
 @overload
-def change_rez_image(img:Image.Image, event_list: None =None)-> Image.Image:
+def change_rez_image(
+    img:Image.Image, event_list: None =None,
+    ratio: float = 0.7,
+)-> Image.Image:
     ...
 @overload
-def change_rez_image(img:Image.Image, event_list: eventWithPilList)-> tuple[Image.Image, eventWithPilList]:
+def change_rez_image(
+    img:Image.Image, event_list: eventWithPilList,
+    ratio: float = 0.7,
+)-> tuple[Image.Image, eventWithPilList]:
     ...
 def change_rez_image(
-        img:Image.Image, event_list: eventWithPilList | None =None
+        img:Image.Image, event_list: eventWithPilList | None =None,
+        ratio: float = 0.7,
     ) -> tuple[Image.Image, eventWithPilList] | Image.Image:
-    """Randomly rescales an image and its associated events.
-
-    A random scaling ratio (sampled from a Gaussian distribution centered at 0.65)
-    is applied to the image. If `event_list` is provided, all event images and
-    their bounding boxes are resized by the same ratio.
+    """Resizes an image and its associated events by a given scale factor.
 
     Args:
-        img (Image.Image): The base PIL image to resize.
-        event_list (eventWithPilList | None, optional): Optional list of events
-            whose images and boxes will also be resized. Defaults to None.
+        img (Image.Image): Input image to resize.
+        event_list (eventWithPilList | None, optional):
+            Optional event list whose images and boxes are resized with the same factor.
+            Defaults to None.
+        ratio (float, optional):
+            Resize factor applied to width and height. Clamped to the [0.3, 1.0] range.
+            Defaults to 0.7.
 
     Returns:
         Image.Image | tuple[Image.Image, eventWithPilList]:
-            The resized image alone, or the image with its updated event list.
+            The resized image, and the updated event list if provided.
     """
     w, h = img.size
-    ratio = min(max(0.3, random.gauss(mu= 0.75, sigma=0.12)), 1)
+    ratio = min(max(ratio, 0.3), 1)
     w, h = int(w*ratio), int(h * ratio)
     img = img.resize(size=(w, h))
 
@@ -394,7 +413,60 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         Image.Image | tuple[Image.Image, eventWithPilList]:  
             The distorted image, and the updated event list if provided.
     """
+    def linear_value_from_resolution(
+        resolution: float,
+        value_low_res: float,
+        value_high_res: float,
+        low_res: float = 480,
+        high_res: float = 1080,
+    ) -> float:
+        """
+        Interpole/extrapole linéairement une valeur en fonction de la résolution.
+        """
+        if low_res == high_res:
+            raise ValueError("low_res et high_res doivent être différents.")
+
+        a = (value_high_res - value_low_res) / (high_res - low_res)
+        b = value_low_res - a * low_res
+        return a * resolution + b
+
+
+    def get_mu_sigma_from_resolution(
+        resolution: float,
+        mu_low_res: float,
+        mu_high_res: float,
+        sigma_low_res: float,
+        sigma_high_res: float,
+        low_res: float = 480,
+        high_res: float = 1080,
+    ) -> tuple[float, float]:
+        """
+        Renvoie (mu, sigma) interpolés/extrapolés selon la résolution.
+        """
+        mu = linear_value_from_resolution(
+            resolution=resolution,
+            value_low_res=mu_low_res,
+            value_high_res=mu_high_res,
+            low_res=low_res,
+            high_res=high_res,
+        )
+
+        sigma = linear_value_from_resolution(
+            resolution=resolution,
+            value_low_res=sigma_low_res,
+            value_high_res=sigma_high_res,
+            low_res=low_res,
+            high_res=high_res,
+        )
+
+        return mu, sigma
+    original_w, original_h = img.size
     transforms_applied = []
+
+    hard_quality_degradation = random.choices(
+        population=['GaussianBlur', 'jpeg_compress', 'pixelate_image', 'change_rez_image', 'None'],
+        weights=   [            10,              15,               20,                 20,     40], k=1
+    )[0]
 
     if random.random() < 0.15:
         if event_list is None:
@@ -410,33 +482,9 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
             img, event_list = crop_image(image=img, event_list=event_list, reverse=True)
         transforms_applied.append("crop_image_reverse")
 
-    if random.random() < 0.30:
-        img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 2)))
-        transforms_applied.append("GaussianBlur")
-
     if random.random() < 0.15:
         img = add_noise(img, std=random.uniform(2, 12))
         transforms_applied.append("add_noise")
-
-    if random.random() < 0.10:
-        img = jpeg_compress(img, quality=random.randint(15, 36))
-        transforms_applied.append("jpeg_compress")
-
-    elif random.random() < 0.3:
-        if event_list is None:
-            img = pixelate_image(img=img)
-        else:
-            img, event_list = pixelate_image(img=img, event_list=event_list)
-        transforms_applied.append("pixelate_image")
-
-    
-    elif random.random() < 0.3:
-        if event_list is None:
-            img=change_rez_image(img=img)
-        else:
-            img, event_list = change_rez_image(img=img, event_list=event_list)
-
-        transforms_applied.append("change_rez_image")
 
     if random.random() < 0.1:
         img = salt_and_pepper(img).convert('RGBA') if img.mode == 'RGBA' else salt_and_pepper(img)
@@ -448,6 +496,40 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         else:
             img, event_list = add_black_band(img=img, event_list=event_list)
         transforms_applied.append("add_black_band")
+
+    if hard_quality_degradation == "GaussianBlur":
+        mu, sigma = get_mu_sigma_from_resolution(resolution=original_h, mu_high_res=2, mu_low_res=0.6,
+                                                 sigma_high_res=0.25, sigma_low_res=0.1)
+        radius=random.gauss(mu= mu, sigma=sigma)
+        img = img.filter(ImageFilter.GaussianBlur(radius=radius))
+        transforms_applied.append("GaussianBlur")
+
+    elif hard_quality_degradation == 'jpeg_compress':
+        mu, sigma = get_mu_sigma_from_resolution(resolution=original_h, mu_high_res=30, mu_low_res=85,
+                                                 sigma_high_res=8, sigma_low_res=3)
+        quality = int(random.gauss(mu= mu, sigma=sigma))
+        img = jpeg_compress(img, quality=quality)
+        transforms_applied.append("jpeg_compress")
+
+    elif hard_quality_degradation == 'pixelate_image':
+        mu, sigma = get_mu_sigma_from_resolution(resolution=original_h, mu_high_res=0.65, mu_low_res=0.95,
+                                                 sigma_high_res=0.1, sigma_low_res=0.04)
+        factor = random.gauss(mu= mu, sigma=sigma)
+        if event_list is None:
+            img = pixelate_image(img=img, factor=factor)
+        else:
+            img, event_list = pixelate_image(img=img, event_list=event_list, factor=factor)
+        transforms_applied.append("pixelate_image")
+    
+    elif hard_quality_degradation == 'change_rez_image':
+        mu, sigma = get_mu_sigma_from_resolution(resolution=original_h, mu_high_res=0.65, mu_low_res=0.95,
+                                                 sigma_high_res=0.02, sigma_low_res=0.8)
+        ratio = random.gauss(mu=mu, sigma=sigma)
+        if event_list is None:
+            img=change_rez_image(img=img, ratio=ratio)
+        else:
+            img, event_list = change_rez_image(img=img, event_list=event_list, ratio=ratio)
+        transforms_applied.append("change_rez_image")
 
     if event_list is None:
         return img
