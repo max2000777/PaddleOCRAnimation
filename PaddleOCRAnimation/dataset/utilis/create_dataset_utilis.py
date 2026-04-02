@@ -11,13 +11,15 @@ from .disturb import disturb_image, style_transform, disturb_text
 from ...video.sub.RendererClean import Context
 from ...video.sub.DocumentPlus import DocumentPlus
 from PIL import Image
-from ...video.classes import dataset_image
+from ...video.classes import dataset_image, eventWithPilList, eventWithPil
 from .events_to_dataset import small_images_to_dataset, big_images_to_dataset
 import sys
 from collections import Counter
 import threading
 import random
-
+from ...video.sub.box import Box
+from copy import deepcopy
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +156,94 @@ def choose_annotation_path(
         return str(txt_dataset_test_text if has_text else txt_dataset_test_notext)
     return str(txt_dataset_train_text if has_text else txt_dataset_train_notext)
     
+def merge_duplicate_events(event_list: eventWithPilList) -> eventWithPilList:
+    """Merge events when they have the same text and the earlier event contains the later one."""
+
+    def box1_contains_box2(
+        b1: Box | tuple[int, int, int, int],
+        b2: Box | tuple[int, int, int, int],
+        tol: int = 5
+    ) -> bool:
+        """Return True if b1 contains b2, within a tolerance."""
+        if isinstance(b1, Box):
+            x_min1, y_min1, x_max1, y_max1 = b1.get_bounding_box()
+        else:
+            x_min1, y_min1, x_max1, y_max1 = b1
+
+        if isinstance(b2, Box):
+            x_min2, y_min2, x_max2, y_max2 = b2.get_bounding_box()
+        else:
+            x_min2, y_min2, x_max2, y_max2 = b2
+
+        return (
+            x_min1 <= x_min2 + tol and
+            y_min1 <= y_min2 + tol and
+            x_max1 >= x_max2 - tol and
+            y_max1 >= y_max2 - tol
+        )
+
+    def rem_or(text: str) -> str:
+        """Remove override tags from ASS text."""
+        return re.sub(r"\{.*?\}", "", text)
+
+    def normalized_texts(event: eventWithPil) -> list[str]:
+        """Return normalized texts for all lines of an event."""
+        return [rem_or(line.Event.text).strip() for line in event.events]
+
+    def can_merge(back_event: eventWithPil, front_event: eventWithPil) -> bool:
+        """
+        Return True if both events have the same texts in the same order
+        and the back event contains the front event.
+        """
+        return (
+            normalized_texts(back_event) == normalized_texts(front_event)
+            and box1_contains_box2(
+                back_event.get_bounding_box(),
+                front_event.get_bounding_box()
+            )
+        )
+
+    def alpha_merge(img_back:Image.Image, img_front:Image.Image):
+        """Alpha-composite two PIL images."""
+        if img_back.mode != "RGBA":
+            img_back = img_back.convert("RGBA")
+        if img_front.mode != "RGBA":
+            img_front = img_front.convert("RGBA")
+
+        if img_back.size != img_front.size:
+            raise ValueError("Images must have the same size for alpha compositing.")
+
+        return Image.alpha_composite(img_back, img_front)
+
+    if len(event_list) <= 1:
+        return event_list
+
+    used = [False] * len(event_list)
+    new_events: list[eventWithPil] = []
+
+    for i, event in enumerate(event_list):
+        if used[i]:
+            continue
+
+        # Start from the current event and progressively merge into it
+        merged_event = deepcopy(event)
+
+        for j in range(i + 1, len(event_list)):
+            if used[j]:
+                continue
+
+            next_event = event_list[j]
+
+            # libass sends background events first
+            if can_merge(merged_event, next_event):
+                logger.debug(f'Found a event with text {normalized_texts(merged_event)} with the same text')
+                merged_event.image = alpha_merge(merged_event.image, next_event.image)
+                used[j] = True
+
+        new_events.append(merged_event)
+
+    return eventWithPilList(new_events)
+
 
 def dataset_metadata_before(
         dataset_path: str,
@@ -379,9 +469,8 @@ def timing_to_dataset(
     events_with_pil = vid.get_subtitle_boxes(timestamp=timing_sec, renderer=r, context=ctx, 
                                              piste=selected_sub_id, multiline = multiline, padding=padding,
                                              use_transparency=use_transparency)
-
     return_event_list = []
-    
+    events_with_pil = merge_duplicate_events(events_with_pil)
     for event in events_with_pil: 
         background = Image.alpha_composite(background, event.image)
         return_event_list+=event.events
@@ -391,12 +480,7 @@ def timing_to_dataset(
     image_name = os.path.join(image_save_path if len(events_with_pil)>0 else no_text_image_save_path,f'{vid_name}_s{selected_sub_id}_t{timing_sec}.png')
     background.save(image_name)
 
-    return_dataset_image_list = [
-        dataset_image(
-            image_path=os.path.abspath(image_name),
-            event_list=return_event_list,
-            test=is_test
-    )]
+    return_dataset_image_list = []
 
     return_dataset_image_list += small_images_to_dataset(
         timestamp=timing_sec, video=vid, r=r,
@@ -406,12 +490,19 @@ def timing_to_dataset(
         is_test=is_test
     )    
 
+    
+
     return_dataset_image_list += big_images_to_dataset(
         events_with_pil=events_with_pil, dataset_path=str(dataset_path), image_save_path= str(image_save_path),
         vid_name= vid_name, sub_id=selected_sub_id, timestamp= timing_sec,
         is_test=is_test
     )
-
+    return_dataset_image_list += [
+        dataset_image(
+            image_path=os.path.abspath(image_name),
+            event_list=return_event_list,
+            test=is_test
+    )]
     return return_dataset_image_list
 
 def after_video_to_dataset_cleanup(
