@@ -465,7 +465,7 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
 
     hard_quality_degradation = random.choices(
         population=['GaussianBlur', 'jpeg_compress', 'pixelate_image', 'change_rez_image', 'None'],
-        weights=   [            10,              15,               20,                 20,     40], k=1
+        weights=   [            10,              15,               20,                  8,     40], k=1
     )[0]
 
     if random.random() < 0.15:
@@ -512,8 +512,8 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         transforms_applied.append("jpeg_compress")
 
     elif hard_quality_degradation == 'pixelate_image':
-        mu, sigma = get_mu_sigma_from_resolution(resolution=original_h, mu_high_res=0.65, mu_low_res=0.95,
-                                                 sigma_high_res=0.1, sigma_low_res=0.04)
+        mu, sigma = get_mu_sigma_from_resolution(resolution=original_h, mu_high_res=0.55, mu_low_res=0.95,
+                                                 sigma_high_res=0.12, sigma_low_res=0.04)
         factor = random.gauss(mu= mu, sigma=sigma)
         if event_list is None:
             img = pixelate_image(img=img, factor=factor)
@@ -522,8 +522,8 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         transforms_applied.append("pixelate_image")
     
     elif hard_quality_degradation == 'change_rez_image':
-        mu, sigma = get_mu_sigma_from_resolution(resolution=original_h, mu_high_res=0.65, mu_low_res=0.95,
-                                                 sigma_high_res=0.02, sigma_low_res=0.8)
+        mu, sigma = get_mu_sigma_from_resolution(resolution=original_h, mu_high_res=0.60, mu_low_res=0.95,
+                                                 sigma_high_res=0.14, sigma_low_res=0.04)
         ratio = random.gauss(mu=mu, sigma=sigma)
         if event_list is None:
             img=change_rez_image(img=img, ratio=ratio)
@@ -704,7 +704,7 @@ def disturb_text(
             '-', '–', '—', 
             "'", ':', '=', 'Œ', 'Ç', 'È', 'Ô', 'ô', '€', 'À', 'Û',
             'Â', '"', ',', '’', '…', 'â', '%', 'ç', '?', '!', ';', '(',
-            '+', 'Ë', '<', 'Î', 'Ï', '&', '@', 'œ', 'ü', '^'
+            '+', 'Ë', '<', 'Î', 'Ï', '&', '@', 'œ', 'ü', '^',
             '«', '»', 'æ', 'µ', '$', '#', ')', 'ï', '²', 'ß'
         ]
 
@@ -793,20 +793,20 @@ def disturb_text(
 
 
     def keep_one_word(
-            event: line.Dialogue, p: float = 0.15,
+            event: line.Dialogue, p: float = 0.20,
             p_capitalize: float = 0.20, p_upper: float = 0.05,
+            p_spe_char: float = 0.4
         ) -> line.Dialogue:
         """replace the event text by one word
         """
         if random.random() > p:
             return event
         
-        modification = random.choices(population=['keep_one_existing', 'keep_one_new'], weights=[40,60])[0]
+        modification = random.choices(population=['keep_one_existing', 'keep_one_new', 'keep_number'], weights=[25, 35, 20])[0]
         if modification == 'keep_one_existing':
             text = re.sub(r'\{.*?\}', '', event.text)
             word_list = text.replace("\n", " ").split(" ")
             word = random.choice(word_list)
-            event.text = word
         elif modification == 'keep_one_new':
             COMMON_SHORT_SUB_WORDS = [
                 "oui", "non", "euh", "ouais", "hein", "hum", "ah", "oh",
@@ -834,14 +834,36 @@ def disturb_text(
                 word = word.upper()
             elif r < p_upper + p_capitalize:
                 word = word.capitalize()
+            
+            
+        elif modification == 'keep_number':
+            num_type = random.choices(['time', 'int'], weights=[50, 50])[0]
+            if num_type == 'time':
+                space = random.choices(['', ' '], [50, 50])[0]
+                h = random.randint(1, 24)
+                m= random.randint(0, 60)
+                word = f"{h}{space}h{space}{m}"
+            elif num_type =='int':
+                n= random.choices([1, 2, 3, 4], [20, 15, 10, 5])[0]
+                word = str(random.randint(0, 10**n - 1))
+            else:
+                raise ValueError()
+        else:
+            raise ValueError()
 
-            event.text = word
+        if random.random() < p_spe_char:
+            spe_char = random.choices(population=[' ?', '.', '…', ' !', ','], weights=[10, 13, 7, 10, 10])[0]
+            word = word + spe_char
+
+        event.text = word
         return event
 
     if isinstance(timestamp, float) or isinstance(timestamp, int):
         timestamp = timedelta(seconds=timestamp)
 
     for i, event in enumerate(event_list):
+        if '{' in event_list[i].text.replace(r'{\i1}','').replace(r'{\i0}','').replace(r'{\b1}','').replace(r'{\b0}',''):
+            continue
         event_list[i]= add_one_spe_char_word(
             event
         )
