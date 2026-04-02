@@ -9,7 +9,6 @@ from os.path import isabs, join, exists, abspath, dirname, relpath, basename, sp
 from os import makedirs
 from pprint import pformat
 import json
-import re
 from pathlib import Path 
 from typing import Literal, Optional
 import os
@@ -241,6 +240,18 @@ class eventWithPil:
             if event.Boxes.full_box != [[0, 0], [0, 0], [0, 0], [0, 0]]:
                 newevents.append(event)
         self.events = newevents
+    
+    def get_bounding_box(self) -> tuple[int, int, int, int]:
+        """return the bounding rectangle of the event
+        Returns:
+            tuple: x_min, y_min, x_max, y_max
+        """
+        x_min, y_min, x_max, y_max = 99999, 99999, -99999, -99999
+        for line in self.events:
+            l_x_min, l_y_min, l_x_max, l_y_max = line.Boxes.get_bounding_box()
+            x_min, y_min, x_max, y_max = min(x_min, l_x_min), min(y_min, l_y_min), max(x_max, l_x_max), max(y_max, l_x_max)
+        
+        return x_min, y_min, x_max, y_max
             
             
 
