@@ -251,6 +251,7 @@ def vobsubpng_to_eventWithPilList(
         multiline: bool = True,
         padding: tuple[int,int,int,int] = (7,2,3,1),
         p_CreateDoubleBorder: float = 0.4,
+        p_crop_png: float = 0.6,
 )->eventWithPilList:
     """
     Build an image/text dataset by pairing VobSub PNG subtitles with timed subtitle events

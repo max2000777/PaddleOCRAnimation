@@ -648,7 +648,7 @@ class Video:
                 dict_event = {
                     "Event": events_list[i],
                     "Boxes": changed_box,
-                    "baseline_Boxes": adapted_box_list[i] if boxes_list else None
+                    "baseline_Boxes": None if len(adapted_box_list) <= i else adapted_box_list[i]
                 }
                 event_tuple[1].append(FrameToBoxEvent(**dict_event))
             returnliste.append(eventWithPil(image=event_tuple[0], events=event_tuple[1]))

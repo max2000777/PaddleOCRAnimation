@@ -29,14 +29,17 @@ class Box:
     def __repr__(self):
         return f'{self.full_box}'
 
-    def get_bounding_box(self):
-        """Retourne le plus petit rectangle aligné avec les axes qui contient entièrement la boîte
+    def get_bounding_box(self) -> tuple[int, int, int, int]:
+        """"Compute the smallest axis-aligned rectangle enclosing the box.
+        Returns:
+            tuple: The bounding box as
+            `(x_min, y_min, x_max, y_max)`.
         """
         xs = [point[0] for point in self.full_box]
         ys = [point[1] for point in self.full_box]
         x_min, x_max = min(xs), max(xs)
         y_min, y_max = min(ys), max(ys)
-        return x_min, y_min, x_max, y_max  # gauche, haut, droite, bas
+        return x_min, y_min, x_max, y_max
     
     def add_padding(self, padding: tuple[int, int, int, int],
                     image_size: tuple[int, int] | None = None):
