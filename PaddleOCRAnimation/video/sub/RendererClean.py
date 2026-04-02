@@ -127,25 +127,35 @@ class Image(ctypes.Structure):
         # TODO : gérer les multilignes 
         if SIZE == (0, 0):
             SIZE = None
+
         width, height = self.w, self.h
         r, g, b, a = self.rgba
         dist_x, dist_y = (self.dst_x, self.dst_y) if SIZE is not None else (0, 0)
 
-        if SIZE is not None and SIZE !=(0, 0):
-            im = PILIMAGE.new("RGBA", (SIZE[0], SIZE[1]))
-        else: # we just want the image with the padding
-            im = PILIMAGE.new("RGBA", (width, height))
+        if SIZE is not None:
+            im = PILIMAGE.new("RGBA", (SIZE[0], SIZE[1]), (0, 0, 0, 0))
+        else:
+            im = PILIMAGE.new("RGBA", (width, height), (0, 0, 0, 0))
+
         pixels = im.load()
 
         for y in range(height):
+            gy = y + dist_y
+            if SIZE is not None and not (0 <= gy < SIZE[1]):
+                continue
+
             for x in range(width):
                 alpha_bitmap = int(self[x, y])
+                if alpha_bitmap <= 0:
+                    continue
 
-                alpha = alpha_bitmap*(256-a)//256
+                gx = x + dist_x
+                if SIZE is not None and not (0 <= gx < SIZE[0]):
+                    continue
+
+                alpha = alpha_bitmap * (256 - a) // 256
                 if alpha > 0:
-                    pixels[x+dist_x, y+dist_y] = (r, g, b, alpha)
-                else:
-                    pixels[x, y] = (0, 0, 0, 0)
+                    pixels[gx, gy] = (r, g, b, alpha)
 
         return im
 
