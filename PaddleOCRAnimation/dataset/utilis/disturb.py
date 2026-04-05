@@ -1,5 +1,6 @@
 from PIL import Image, ImageFilter
 from ...video.classes import eventWithPilList, eventWithPil
+from ...video.sub.vobsub2png import simulate_CreateDoubleBorder
 from typing import overload
 import random
 import numpy as np
@@ -29,6 +30,7 @@ def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
                              mean_band_size_perc:float = 0.2,
                              p_pixelize: float = 0.25,
                              p_change_rez: float = 0.15,
+                             p_double_border: float = 0,
                             ) -> eventWithPil:
     """
     Applies random visual disturbances to an event image to increase dataset variability.
@@ -92,6 +94,13 @@ def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
         events.image = pixelate_image(events.image)
     
     events = change_rez(events=events, p=p_change_rez)
+
+    if p_double_border > 0 and random.random() < p_double_border: 
+        border_size = 10
+        events.image = simulate_CreateDoubleBorder(events.image, borderSize= border_size)
+        for sub in events.events:
+            sub.Boxes.add_padding((border_size*2, border_size*2, border_size*2, border_size*2))
+
     
     return events
 
@@ -857,6 +866,24 @@ def disturb_text(
 
         event.text = word
         return event
+    
+    def add_fading(event: line.Dialogue,p:float = 0.20, p_end: float = 0.3) -> line.Dialogue:
+        if random.random() > p:
+            return event
+        event_t = (event.end - event.start).total_seconds() * 1000
+        fade_t_per = random.gauss(mu=30, sigma=7)
+        fade_t = str(abs(int(event_t * (fade_t_per/100))))
+        
+        balise = r"{\fad("+fade_t+r",0)}"
+
+        if random.random() < p_end:
+            balise = rf"{{\fad(0,{fade_t})}}"
+        else:
+            balise = rf"{{\fad({fade_t},0)}}"
+        
+        event.text = balise + event.text
+        return event
+
 
     if isinstance(timestamp, float) or isinstance(timestamp, int):
         timestamp = timedelta(seconds=timestamp)
@@ -888,6 +915,10 @@ def disturb_text(
             p_three_dots_before=p_three_dots_before,
             timestamp=timestamp
         )
+        event_list[i] = add_fading(
+            event
+        )
+
     
     return event_list
     
