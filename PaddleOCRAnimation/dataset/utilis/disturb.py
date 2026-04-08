@@ -1,6 +1,5 @@
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageDraw
 from ...video.classes import eventWithPilList, eventWithPil
-from ...video.sub.vobsub2png import simulate_CreateDoubleBorder
 from typing import overload
 import random
 import numpy as np
@@ -399,6 +398,43 @@ def change_rez_image(
         return img, event_list
     
     return img
+
+def simulate_CreateDoubleBorder(
+        img: Image.Image, borderSize: int = 10, p_change_color:float = 0.3
+    ) -> Image.Image:
+    """Try to replicate the default prepocess : https://github.com/SubtitleEdit/subtitleedit/blob/669eb2ca0ebc1950707fff3dcac600f97d7b5602/src/UI/Features/Ocr/Engines/PaddleOcr.cs#L388
+    """
+    img = img.convert("RGBA")
+
+    w, h = img.size
+    totalBorder = borderSize * 2
+    finalWidth = w + totalBorder * 2
+    finalHeight = h + totalBorder * 2
+
+    result = Image.new("RGBA", (finalWidth, finalHeight), (0, 0, 0, 0))
+
+    draw = ImageDraw.Draw(result)
+
+    left = borderSize
+    top = borderSize
+    right = finalWidth - borderSize
+    bottom = finalHeight - borderSize
+
+    rect_color = (0, 0, 0, 255)
+
+    if random.random() < p_change_color:
+        rect_color = rect_color = (
+            random.randint(0, 255),
+            random.randint(0, 255),
+            random.randint(0, 255),
+            255,
+        )
+
+    draw.rectangle([left, top, right, bottom], fill=rect_color)
+
+    result.paste(img, (totalBorder, totalBorder), img)
+
+    return result
 
 
 @overload
