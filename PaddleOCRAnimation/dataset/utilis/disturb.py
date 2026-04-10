@@ -903,20 +903,44 @@ def disturb_text(
         event.text = word
         return event
     
-    def add_fading(event: line.Dialogue,p:float = 0.20, p_end: float = 0.3) -> line.Dialogue:
+    def add_fading(
+            event: line.Dialogue,
+            p:float = 0.20, 
+            p_end: float = 0.3, 
+            screen_timestamp: timedelta | None = None, 
+            min_visible_ratio: float = 0.40
+
+        ) -> line.Dialogue:
         if random.random() > p:
             return event
-        event_t = (event.end - event.start).total_seconds() * 1000
-        fade_t_per = random.gauss(mu=30, sigma=7)
-        fade_t = str(abs(int(event_t * (fade_t_per/100))))
-        
-        balise = r"{\fad("+fade_t+r",0)}"
+
+        event_t = int((event.end - event.start).total_seconds() * 1000)
+        if event_t <= 0:
+            return event
+
+        fade_t_perc = random.gauss(mu=30, sigma=7)
+        fade_t = abs(int(event_t * (fade_t_perc / 100)))
+        fade_t = max(1, min(fade_t, event_t))
+
+        ts_ms = None if screen_timestamp is None else screen_timestamp.total_seconds() * 1000
 
         if random.random() < p_end:
+            # the screen is taken too soon, when the sub isnt clear enough
+            bad_start = event.end.total_seconds() * 1000 - fade_t * min_visible_ratio
+
+            if ts_ms is not None and ts_ms > bad_start:
+                return event
+
             balise = rf"{{\fad(0,{fade_t})}}"
+
         else:
+            bad_end = event.start.total_seconds() * 1000 + fade_t * min_visible_ratio
+
+            if ts_ms is not None and ts_ms < bad_end:
+                return event
+
             balise = rf"{{\fad({fade_t},0)}}"
-        
+
         event.text = balise + event.text
         return event
 
@@ -952,7 +976,8 @@ def disturb_text(
             timestamp=timestamp
         )
         event_list[i] = add_fading(
-            event
+            event,
+            screen_timestamp=timestamp
         )
 
     
