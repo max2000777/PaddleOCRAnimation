@@ -16,7 +16,7 @@ def small_images_to_dataset(
         dataset_path: str, image_save_path: str,
         ctx: Context, multiline: bool = True,
         sub_id: int = 0,
-        p: float = 0.15,
+        p: float = 0.30,
         padding: tuple[int, int, int, int] | tuple[float, float, float, float] | float = (0.005, 0.1, 0.005, 0.1),
         is_test: bool = False,
 ) -> list[dataset_image]:
