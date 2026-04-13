@@ -83,7 +83,7 @@ def detect_text_line_xyxy(
 
                 line_boxes.append((
                     int(last_cut+np.where(box_projecton > 0)[0][0]), # first id not null 
-                    int(last_cut+np.where(last_cut+box_projecton > 0)[0][-1]) # last id not null
+                    int(last_cut + np.where(box_projecton > 0)[0][-1]) # last id not null
                 ))
             
             # last line
@@ -109,7 +109,12 @@ def detect_text_line_xyxy(
         abs_boxes = []
         for (y1, y2) in line_boxes:
             line_region = binary[y1:y2, :]
-            x_proj = line_region.sum(axis=0)
+            h = line_region.shape[0]
+            core_top = int(h * 0.10) # above line can be annoying
+            core_bottom = int(h * 0.95)
+            core = line_region[core_top:core_bottom, :]
+
+            x_proj = core.sum(axis=0)
             x_indices = np.where(x_proj > 0)[0]
 
             if len(x_indices) == 0:
