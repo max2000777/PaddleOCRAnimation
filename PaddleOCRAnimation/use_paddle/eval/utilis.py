@@ -1,7 +1,7 @@
 from shapely import Polygon
 from numpy.typing import NDArray
 from os import makedirs
-from os.path import exists, join, dirname, basename
+from os.path import exists, join, dirname, basename, abspath
 from ...dataset.detDataset import detDataset
 from paddleocr._pipelines.ocr import PaddleOCR
 import logging
@@ -551,6 +551,7 @@ def create_wrong_image_dict(
     wrong_image_dict['detected_box_for_each_truth'] = detected_box_for_each_truth
     wrong_image_dict['correctly_rec_text'] = correctly_rec_text
     wrong_image_dict['rec_texts'] = ocr_result_image['rec_texts']
+    wrong_image_dict['rec_scores'] = ocr_result_image['rec_scores']
 
     return wrong_image_dict
 
@@ -560,6 +561,7 @@ def eval_paddleOCR(
         image_dir_path: str,
         iou_thresh: float = 0.6,
         remove_existing:bool = False,
+        user_text_rec_score_thresh: float = 0.75,
         **kwargs
 ):
     det_dataset = prepare_dataset(det_dataset_txt_path)
@@ -631,6 +633,8 @@ def eval_paddleOCR(
 
     with open(join(full_saving_path,"data.json"), "w", encoding="utf-8") as f:
         jsonDump(wrong_images_dict, f, ensure_ascii=False, indent=1)
+    
+    print(f'Images saved in {abspath(full_saving_path)}')
 
     return return_dict
 
