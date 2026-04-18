@@ -30,7 +30,7 @@ def small_images_to_dataset(
     return_list = []
     for i, event in enumerate(events_with_pil):
         save_path = join(image_save_path, f'{vid_name}_s{sub_id}_t{timestamp}_e{i}.png')
-        event = disturb_eventWithPil(event, p_double_border=0.2)
+        event = disturb_eventWithPil(event, p_double_border=0.5)
         event.image.save(save_path)
         return_list.append(dataset_image(
             image_path=abspath(save_path),
