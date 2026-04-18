@@ -459,12 +459,13 @@ def timing_to_dataset(
     r = ctx.make_renderer()
     r.set_fonts(fontconfig_config="\0")
     r.set_all_sizes(background.size)
-
+    text_list = []
     if n_event_in_frame == 1 and event_section[0].style == dominant_style:
         for i, style in enumerate(vid.docs[selected_sub_id].styles):
             if style.name == dominant_style:
                 vid.docs[selected_sub_id].styles[i] = style_transform(style=style)
         vid.docs[selected_sub_id].events = disturb_text(event_list=vid.docs[selected_sub_id].events, timestamp=timing_sec)
+        text_list += [event.text for event in vid.docs[selected_sub_id].events]
     
     events_with_pil = vid.get_subtitle_boxes(timestamp=timing_sec, renderer=r, context=ctx, 
                                              piste=selected_sub_id, multiline = multiline, padding=padding,
@@ -482,12 +483,14 @@ def timing_to_dataset(
 
     return_dataset_image_list = []
 
+    n_words= [len(re.findall(r"\b\w+\b", s)) for s in text_list] if text_list else []
     return_dataset_image_list += small_images_to_dataset(
         timestamp=timing_sec, video=vid, r=r,
         dataset_path=str(dataset_path), image_save_path=str(image_save_path),
         ctx=ctx, multiline=multiline, sub_id=selected_sub_id,
         padding= padding, 
-        is_test=is_test
+        is_test=is_test,
+        p= 0.6 if (len(n_words) ==1 and 1 in n_words) else 0.3 # the model has a hard time detecting lonely word
     )    
 
     

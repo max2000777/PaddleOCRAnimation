@@ -110,7 +110,7 @@ def detect_text_line_xyxy(
         for (y1, y2) in line_boxes:
             line_region = binary[y1:y2, :]
             h = line_region.shape[0]
-            core_top = int(h * 0.10) # above line can be annoying
+            core_top = int(h * 0.18) # above line can be annoying
             core_bottom = int(h * 0.95)
             core = line_region[core_top:core_bottom, :]
 

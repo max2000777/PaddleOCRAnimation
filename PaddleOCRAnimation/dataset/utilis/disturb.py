@@ -27,9 +27,11 @@ def replace_random_space(s: str, replacement: str, chance_of_first: float = 0) -
 
 def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
                              mean_band_size_perc:float = 0.2,
+                             sigma_band_size_perc: float = 0.08,
                              p_pixelize: float = 0.25,
                              p_change_rez: float = 0.15,
                              p_double_border: float = 0,
+                             
                             ) -> eventWithPil:
     """
     Applies random visual disturbances to an event image to increase dataset variability.
@@ -43,6 +45,7 @@ def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
         events (eventWithPil): The event containing the image, text, and boxes.
         p_padding (float, optional): Probability of adding transparent padding on each side. Defaults to 0.15.
         mean_band_size_perc (float, optional): Mean relative padding size per side. Defaults to 0.2.
+        sigma_band_size_perc (float, optional): TODO
         p_pixelize (float, optional): Probability to pixelize the image (without changing its resolution). Defaults to 0.25.
         p_change_rez (float, optional): Probability to randomly change the image resolution and resize boxes accordingly. Defaults to 0.15.
 
@@ -52,13 +55,14 @@ def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
     def add_transparent_padding(
             events: eventWithPil,
             p_padding:float,
-            mean_band_size_perc:float
+            mean_band_size_perc:float,
+            sigma_band_size_perc: float,
         ) -> eventWithPil:
         perc: list[float] = [0, 0, 0, 0]
 
         for i in range(0, len(perc), 1): 
             if random.random() < p_padding:
-                perc[i] = abs(random.gauss(mean_band_size_perc, 0.15))
+                perc[i] = max(0.001, min(0.99, (random.gauss(mean_band_size_perc, sigma_band_size_perc))))
         
         if perc == [0, 0, 0, 0]:
             return events
@@ -87,19 +91,28 @@ def disturb_eventWithPil(events: eventWithPil, p_padding:float = 0.15,
         return events
 
     
-    events = add_transparent_padding(events=events, p_padding=p_padding, 
-                                     mean_band_size_perc=mean_band_size_perc)
+    
     if random.random() < p_pixelize:
         events.image = pixelate_image(events.image)
     
     events = change_rez(events=events, p=p_change_rez)
 
     if p_double_border > 0 and random.random() < p_double_border: 
+        events = add_transparent_padding(
+            events=events, p_padding=0.9, 
+            mean_band_size_perc=0.08,
+            sigma_band_size_perc=0.1
+        )
         border_size = 10
-        events.image = simulate_CreateDoubleBorder(events.image, borderSize= border_size)
+        events.image = simulate_CreateDoubleBorder(events.image, borderSize= border_size, p_change_color=0.2)
         for sub in events.events:
             sub.Boxes.add_padding((border_size*2, border_size*2, border_size*2, border_size*2))
-
+    else: 
+        events = add_transparent_padding(
+            events=events, p_padding=p_padding, 
+            mean_band_size_perc=mean_band_size_perc,
+            sigma_band_size_perc=sigma_band_size_perc
+        )
     
     return events
 
@@ -178,7 +191,7 @@ def crop_image(
                     continue
                 min_h, min_w, max_h, max_w = min(e_min_h, min_h), min(e_min_w, min_w), max(max_h, e_max_h), max(max_w, e_max_w)
 
-    cut_top = abs(int(random.gauss(height_cut_ratio, 0.08)* im_h)) if random.random() < p_cut_h else 0
+    cut_top = abs(int(min(0.95, random.gauss(height_cut_ratio, 0.13), 0.95)* im_h)) if random.random() < p_cut_h else 0
     cut_sides = abs(int(random.gauss(width_cut_ratio , 0.035)* im_w)) if random.random() < p_cut_w else 0
     cut_bottom = 0
 
@@ -513,14 +526,14 @@ def disturb_image(img: Image.Image, event_list: eventWithPilList | None = None):
         weights=   [            10,              15,               20,                  8,     40], k=1
     )[0]
 
-    if random.random() < 0.15:
+    if random.random() < 0.25:
         if event_list is None:
             img=crop_image(image=img)
         else:
             img, event_list = crop_image(image=img, event_list=event_list)
         transforms_applied.append("crop_image")
 
-    elif random.random() < 0.15:
+    elif random.random() < 0.20:
         if event_list is None:
             img=crop_image(image=img, reverse=True)
         else:
