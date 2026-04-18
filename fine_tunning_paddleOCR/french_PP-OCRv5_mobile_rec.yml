@@ -2,12 +2,12 @@ Global:
   model_name: &model_name latin_PP-OCRv5_mobile_rec # To use static model for inference.
   debug: false
   use_gpu: true
-  epoch_num: &epoch_num 10
+  epoch_num: &epoch_num 25
   log_smooth_window: 20
   print_batch_step: 10
   save_model_dir: ../PaddleOCR_output/french_PP-OCRv5_mobile_rec
-  save_epoch_step: 30
-  eval_batch_step: [0, 500]
+  save_epoch_step: 20
+  eval_batch_step: [200, 300]
   cal_metric_during_train: true
   pretrained_model: ../Data/Modèles/latin_PP-OCRv5_mobile_rec_pretrained.pdparams
   checkpoints:
@@ -30,8 +30,8 @@ Optimizer:
   beta2: 0.999
   lr:
     name: Cosine
-    learning_rate: 0.00000425 # entre [0.0001-0.00002]* (batch size/128), https://www.paddleocr.ai/v2.9/en/ppocr/model_train/finetune.html#33-training-hyperparameter
-    warmup_epoch: 1
+    learning_rate: 0.00002500 # entre [0.0001-0.00002]* (batch size/128), https://www.paddleocr.ai/v2.9/en/ppocr/model_train/finetune.html#33-training-hyperparameter
+    warmup_epoch: 2
   regularizer:
     name: L2
     factor: 3.0e-05
@@ -84,10 +84,10 @@ Train:
   dataset:
     name: MultiScaleDataSet
     ds_width: false
-    data_dir: ../PaddleOCRAnime/dataset/
+    data_dir: ../PaddleOCRAnime/dataset/rec_images/
     ext_op_transform_idx: 1
     label_file_list:
-    - ../PaddleOCRAnime/dataset/recTrain.txt
+    - ../PaddleOCRAnime/dataset/rec_images/recTrain.txt
     transforms:
     - DecodeImage:
         img_mode: BGR
@@ -123,9 +123,9 @@ Train:
 Eval:
   dataset:
     name: SimpleDataSet
-    data_dir: ../PaddleOCRAnime/dataset/
+    data_dir: ../PaddleOCRAnime/dataset/rec_images/
     label_file_list:
-    - ../PaddleOCRAnime/dataset/recTest.txt
+    - ../PaddleOCRAnime/dataset/rec_images/recTest.txt
     transforms:
     - DecodeImage:
         img_mode: BGR
